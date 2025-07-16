@@ -313,11 +313,12 @@ class IntentAnalyzer:
         return attributes
 
     def _needs_database_query(self, intent_type: IntentType, focus_area: FocusArea, current_phase: DeckPhase) -> bool:
-        """Determine if a database query is needed"""
+        """Determine if a database query is needed - be more liberal to support exploration"""
         # Intent types that typically need database queries
         query_intents = {
             IntentType.ADD_CARDS,
-            IntentType.ANALYZE_MATCHUP
+            IntentType.ANALYZE_MATCHUP,
+            IntentType.UNKNOWN  # Allow unknown intents to trigger searches for exploration
         }
         
         # Focus areas that need database queries
@@ -325,20 +326,15 @@ class IntentAnalyzer:
             FocusArea.POKEMON,
             FocusArea.TRAINERS,
             FocusArea.ENERGY,
-            FocusArea.SPECIFIC_CARD
+            FocusArea.SPECIFIC_CARD,
+            FocusArea.GENERAL  # Allow general conversations to trigger searches
         }
         
-        # Phases where queries are common
-        query_phases = {
-            DeckPhase.CORE_POKEMON,
-            DeckPhase.SUPPORT,
-            DeckPhase.ENERGY
-        }
-        
+        # Always allow database queries for creative exploration
         return (
             intent_type in query_intents or
             focus_area in query_focus or
-            current_phase in query_phases
+            current_phase in {DeckPhase.CORE_POKEMON, DeckPhase.SUPPORT, DeckPhase.ENERGY, DeckPhase.STRATEGY}
         )
 
     def _generate_reasoning(self, intent_type: IntentType, focus_area: FocusArea, 

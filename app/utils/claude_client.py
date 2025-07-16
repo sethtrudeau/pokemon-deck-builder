@@ -13,51 +13,61 @@ class ClaudeClient:
         
         self.client = AsyncAnthropic(api_key=self.api_key)
         self.model = "claude-3-5-sonnet-20241022"
-        self.max_tokens = 1500
+        self.max_tokens = 2500
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt for Pokemon deck building"""
-        return """You are an expert Pokemon Trading Card Game (TCG) deck building assistant. Your role is to help users build competitive and fun Pokemon decks while following official TCG rules and providing strategic guidance.
+        return """You are an expert Pokemon Trading Card Game (TCG) deck building assistant with a passion for creative, innovative, and unconventional deck strategies. You excel at helping users build both competitive meta decks and completely novel, rogue strategies that break conventional wisdom.
 
-## Pokemon TCG Rules & Constraints:
+## Your Core Philosophy:
+- **Innovation over Convention**: Embrace creative, unexpected strategies and card combinations
+- **Natural Conversation**: Respond to users naturally without forcing rigid structure
+- **Flexible Guidance**: Adapt to user interests whether they want meta, rogue, or experimental decks
+- **Strategic Depth**: Provide deep strategic insights while remaining accessible
+- **Rule Compliance**: Always ensure decks follow official TCG rules
+
+## Pokemon TCG Rules (Always Enforced):
 - Standard deck must contain exactly 60 cards
 - Maximum 4 copies of any card (except basic Energy)
 - Unlimited basic Energy cards allowed
 - Evolution chains: Basic → Stage 1 → Stage 2 (must include lower evolution stages)
 - Energy types must match Pokemon attack requirements
-- Include mix of Pokemon (12-20), Trainers (20-35), and Energy (8-15)
 
-## Deck Building Phases:
-1. **Strategy**: Define deck archetype (Aggro, Control, Combo, Midrange)
-2. **Core Pokemon**: Select main attackers and key Pokemon (8-12 cards)
-3. **Support**: Add Trainer cards for draw, search, and utility (20-35 cards)  
-4. **Energy**: Add appropriate Energy cards (8-15 cards)
-5. **Complete**: Finalize and optimize the 60-card deck
+## Deck Building Approach:
+Instead of rigid phases, fluidly discuss:
+- **Strategy Exploration**: What unique approach excites the user?
+- **Card Synergies**: How can unexpected cards work together?
+- **Creative Combinations**: What unconventional pairings might work?
+- **Meta Disruption**: How can we surprise the competition?
+- **Personal Expression**: What makes this deck uniquely theirs?
 
-## Your Responsibilities:
-- Guide users through each phase systematically
-- Suggest cards that synergize with their strategy
-- Ensure deck follows TCG rules and card limits
-- Provide strategic reasoning for card choices
-- Help balance consistency vs. power
-- Consider meta-game and matchup analysis when requested
+## Your Expertise Areas:
+- **Rogue Strategies**: Help discover untapped card combinations and archetypes
+- **Meta Analysis**: Understand current competitive landscape and how to exploit it
+- **Card Interactions**: Deep knowledge of obscure synergies and interactions
+- **Alternative Win Conditions**: Explore creative ways to win games
+- **Format Innovation**: Adapt strategies across different tournament formats
 
 ## Response Style:
-- Be enthusiastic and knowledgeable about Pokemon
-- Explain card synergies and strategic value
-- Ask clarifying questions to understand user preferences
-- Provide multiple options when possible
-- Keep responses concise but informative
-- Focus on the current phase while considering overall deck strategy
+- **Conversational**: Talk naturally, not like a rigid AI system
+- **Enthusiastic**: Share genuine excitement about creative deck possibilities
+- **Adaptive**: Follow the user's interests and energy level
+- **Exploratory**: Ask "What if we tried..." and suggest wild possibilities
+- **Supportive**: Encourage experimentation while providing strategic grounding
+- **Detailed**: When users want depth, provide comprehensive analysis
 
-Always prioritize deck legality, strategic coherence, and fun gameplay experience."""
+## Special Capabilities:
+- Suggest cards that others might overlook
+- Identify hidden synergies between seemingly unrelated cards
+- Help theory-craft completely new archetypes
+- Provide alternatives to meta strategies
+- Balance creativity with competitive viability
+
+Remember: The best decks often come from unexpected ideas. Be the creative partner who helps users discover their next breakthrough strategy, whether it's a refinement of existing concepts or something completely revolutionary."""
 
     def _build_conversation_context(self, conversation_state: ConversationState, available_cards: Optional[List[Dict[str, Any]]] = None) -> str:
         """Build conversation context from current state"""
         context_parts = []
-        
-        # Current phase and progress
-        context_parts.append(f"## Current Building Phase: {conversation_state.current_phase.value.title()}")
         
         # Deck progress summary
         total_cards = len(conversation_state.selected_cards)
@@ -65,63 +75,76 @@ Always prioritize deck legality, strategic coherence, and fun gameplay experienc
         trainer_count = len([c for c in conversation_state.selected_cards if c.get("card_type") == "Trainer"])
         energy_count = len([c for c in conversation_state.selected_cards if c.get("card_type") == "Energy"])
         
-        context_parts.append(f"""## Current Deck Progress ({total_cards}/60 cards):
+        context_parts.append(f"""## Current Deck Status ({total_cards}/60 cards):
 - Pokemon: {pokemon_count} cards
 - Trainers: {trainer_count} cards  
-- Energy: {energy_count} cards""")
+- Energy: {energy_count} cards
+- Remaining: {60 - total_cards} cards to add""")
         
         # Strategy information
         if conversation_state.deck_strategy:
-            context_parts.append(f"## Deck Strategy: {conversation_state.deck_strategy}")
+            context_parts.append(f"## Current Strategy Direction: {conversation_state.deck_strategy}")
+        else:
+            context_parts.append("## Strategy: Open to exploration and creative ideas")
         
-        # Selected cards summary
+        # Selected cards summary with types for synergy analysis
         if conversation_state.selected_cards:
-            context_parts.append("## Currently Selected Cards:")
+            context_parts.append("## Current Deck Contents:")
             card_summary = {}
+            card_types = {}
             for card in conversation_state.selected_cards:
                 name = card.get("name", "Unknown")
                 card_summary[name] = card_summary.get(name, 0) + 1
+                card_types[name] = card.get("card_type", "Unknown")
             
             for name, count in sorted(card_summary.items()):
-                context_parts.append(f"- {count}x {name}")
+                context_parts.append(f"- {count}x {name} ({card_types[name]})")
+        else:
+            context_parts.append("## Current Deck: Empty - Ready for creative exploration!")
         
-        # Phase completion status
-        completed_phases = [phase for phase, completed in conversation_state.phase_completion.items() if completed]
-        if completed_phases:
-            context_parts.append(f"## Completed Phases: {', '.join(completed_phases)}")
-        
-        # Available cards from last query
+        # Available cards from last query with enhanced details
         if available_cards:
-            context_parts.append(f"## Available Cards Found ({len(available_cards)} results):")
-            for i, card in enumerate(available_cards[:10], 1):  # Show first 10
+            context_parts.append(f"## Available Cards for Analysis ({len(available_cards)} found):")
+            for i, card in enumerate(available_cards[:15], 1):  # Show more cards
                 name = card.get("name", "Unknown")
                 card_type = card.get("card_type", "Unknown")
+                subtype = card.get("subtype", "")
                 hp = card.get("hp", "")
-                hp_text = f" ({hp} HP)" if hp else ""
-                context_parts.append(f"{i}. {name} - {card_type}{hp_text}")
+                types = card.get("types", [])
+                
+                # Build rich description
+                desc_parts = [card_type]
+                if subtype:
+                    desc_parts.append(subtype)
+                if hp:
+                    desc_parts.append(f"{hp} HP")
+                if types:
+                    desc_parts.append(f"Types: {', '.join(types)}")
+                
+                description = " | ".join(desc_parts)
+                context_parts.append(f"{i}. {name} - {description}")
             
-            if len(available_cards) > 10:
-                context_parts.append(f"... and {len(available_cards) - 10} more cards")
+            if len(available_cards) > 15:
+                context_parts.append(f"... and {len(available_cards) - 15} more cards available")
         
-        # Recent conversation history
+        # Recent conversation history for context
         if conversation_state.conversation_history:
-            context_parts.append("## Recent Conversation:")
+            context_parts.append("## Recent Discussion:")
             for entry in conversation_state.conversation_history[-3:]:  # Last 3 exchanges
-                timestamp = entry.get("timestamp", "")
                 user_msg = entry.get("user_message", "")
                 intent = entry.get("intent", "")
-                context_parts.append(f"User ({intent}): {user_msg}")
+                context_parts.append(f"User: {user_msg}")
         
-        # Phase-specific guidance
-        phase_guidance = {
-            DeckPhase.STRATEGY: "Focus on defining the deck's main strategy and win condition.",
-            DeckPhase.CORE_POKEMON: "Select primary Pokemon attackers and key support Pokemon.",
-            DeckPhase.SUPPORT: "Add Trainer cards for draw power, search, and strategic support.",
-            DeckPhase.ENERGY: "Add Energy cards to power your Pokemon's attacks.",
-            DeckPhase.COMPLETE: "Review and optimize the completed deck."
+        # Building stage context (flexible)
+        stage_context = {
+            DeckPhase.STRATEGY: "Currently exploring strategy options - open to any creative direction",
+            DeckPhase.CORE_POKEMON: "Building the Pokemon core - looking for attackers and key Pokemon",
+            DeckPhase.SUPPORT: "Adding support cards - Trainers, Items, and utility",
+            DeckPhase.ENERGY: "Working on energy base - ensuring proper energy support",
+            DeckPhase.COMPLETE: "Deck is complete - available for refinement and optimization"
         }
         
-        context_parts.append(f"## Current Phase Guidance: {phase_guidance[conversation_state.current_phase]}")
+        context_parts.append(f"## Current Focus: {stage_context[conversation_state.current_phase]}")
         
         return "\n\n".join(context_parts)
 

@@ -171,23 +171,20 @@ class DeckBuildingService:
         return response
 
     async def _handle_continue_building(self, conversation_state: ConversationState, response: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle continuing to next phase"""
-        # Check if current phase is complete
-        if self.conversation_service._is_phase_complete(conversation_state):
-            # Move to next phase
-            next_phase = self.conversation_service.phase_progression[conversation_state.current_phase]
-            conversation_state.current_phase = next_phase
-            response["current_phase"] = next_phase.value
-            response["phase_complete"] = True
-            
-            # Get phase transition advice
-            response["ai_response"] = await self.claude_client.get_phase_transition_advice(conversation_state)
-        else:
-            # Phase not complete, provide guidance
-            response["ai_response"] = await self.claude_client.generate_response(
-                "Help me continue building my deck",
-                conversation_state
-            )
+        """Handle continuing to build the deck"""
+        # Generate flexible response based on current deck state
+        response["ai_response"] = await self.claude_client.generate_response(
+            response["message"],
+            conversation_state
+        )
+        
+        # Optionally progress phase if user explicitly wants to move forward
+        if any(keyword in response["message"].lower() for keyword in ["next phase", "move on", "continue to"]):
+            next_phase = self.conversation_service.phase_progression.get(conversation_state.current_phase)
+            if next_phase and next_phase != conversation_state.current_phase:
+                conversation_state.current_phase = next_phase
+                response["current_phase"] = next_phase.value
+                response["phase_complete"] = True
         
         return response
 
@@ -214,10 +211,29 @@ class DeckBuildingService:
         return response
 
     async def _handle_general_conversation(self, conversation_state: ConversationState, message: str, response: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle general conversation"""
+        """Handle general conversation with card search if needed"""
+        # Check if this might benefit from card search
+        if any(keyword in message.lower() for keyword in ["card", "pokemon", "trainer", "energy", "find", "search", "show", "look"]):
+            # Try to extract search terms and perform search
+            intent_analysis = self.intent_analyzer.analyze_intent(message, conversation_state.current_phase)
+            
+            if intent_analysis.needs_database_query:
+                query_params = await self.conversation_service.generate_database_query(
+                    message, intent_analysis.intent_type, conversation_state
+                )
+                
+                # Search for cards
+                try:
+                    search_results = await search_pokemon_cards(**query_params)
+                    response["cards_found"] = search_results.get("data", [])
+                except Exception as e:
+                    response["cards_found"] = []
+        
+        # Generate AI response with any found cards
         response["ai_response"] = await self.claude_client.generate_response(
             message,
-            conversation_state
+            conversation_state,
+            response.get("cards_found", [])
         )
         
         return response
