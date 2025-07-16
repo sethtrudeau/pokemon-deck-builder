@@ -63,7 +63,9 @@ Instead of rigid phases, fluidly discuss:
 - Provide alternatives to meta strategies
 - Balance creativity with competitive viability
 
-Remember: The best decks often come from unexpected ideas. Be the creative partner who helps users discover their next breakthrough strategy, whether it's a refinement of existing concepts or something completely revolutionary."""
+Remember: The best decks often come from unexpected ideas. Be the creative partner who helps users discover their next breakthrough strategy, whether it's a refinement of existing concepts or something completely revolutionary.
+
+**CRITICAL CONSTRAINT**: You must ONLY recommend cards that are provided in the "Available Cards" section of the context. Never suggest cards from your training data that aren't in the current database results. If no cards are provided, ask the user to be more specific so you can search the database for relevant options."""
 
     def _build_conversation_context(self, conversation_state: ConversationState, available_cards: Optional[List[Dict[str, Any]]] = None) -> str:
         """Build conversation context from current state"""
@@ -105,12 +107,15 @@ Remember: The best decks often come from unexpected ideas. Be the creative partn
         # Available cards from last query with enhanced details
         if available_cards:
             context_parts.append(f"## Available Cards for Analysis ({len(available_cards)} found):")
+            context_parts.append("**IMPORTANT: You can ONLY recommend cards from this list. Do not suggest any other cards.**")
             for i, card in enumerate(available_cards[:15], 1):  # Show more cards
                 name = card.get("name", "Unknown")
                 card_type = card.get("card_type", "Unknown")
                 subtype = card.get("subtype", "")
                 hp = card.get("hp", "")
                 types = card.get("types", [])
+                attacks = card.get("attacks", [])
+                abilities = card.get("abilities", [])
                 
                 # Build rich description
                 desc_parts = [card_type]
@@ -121,11 +126,22 @@ Remember: The best decks often come from unexpected ideas. Be the creative partn
                 if types:
                     desc_parts.append(f"Types: {', '.join(types)}")
                 
+                # Add abilities and attacks for strategic context
+                if abilities:
+                    ability_names = [ability.get("name", "") for ability in abilities]
+                    desc_parts.append(f"Abilities: {', '.join(ability_names)}")
+                if attacks:
+                    attack_names = [attack.get("name", "") for attack in attacks]
+                    desc_parts.append(f"Attacks: {', '.join(attack_names)}")
+                
                 description = " | ".join(desc_parts)
                 context_parts.append(f"{i}. {name} - {description}")
             
             if len(available_cards) > 15:
                 context_parts.append(f"... and {len(available_cards) - 15} more cards available")
+        else:
+            context_parts.append("## No Cards Available:")
+            context_parts.append("No specific cards found in database. Ask the user to be more specific about what they're looking for so you can search for relevant cards.")
         
         # Recent conversation history for context
         if conversation_state.conversation_history:

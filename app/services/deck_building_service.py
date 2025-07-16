@@ -172,10 +172,27 @@ class DeckBuildingService:
 
     async def _handle_continue_building(self, conversation_state: ConversationState, response: Dict[str, Any]) -> Dict[str, Any]:
         """Handle continuing to build the deck"""
-        # Generate flexible response based on current deck state
+        # Get relevant cards to provide concrete suggestions
+        try:
+            # Get cards based on current phase
+            if conversation_state.current_phase.value in ["strategy", "core_pokemon"]:
+                search_results = await search_pokemon_cards(card_types=["Pokémon"], limit=15)
+            elif conversation_state.current_phase.value == "support":
+                search_results = await search_pokemon_cards(card_types=["Trainer"], limit=15)
+            elif conversation_state.current_phase.value == "energy":
+                search_results = await search_pokemon_cards(card_types=["Energy"], limit=15)
+            else:
+                search_results = await search_pokemon_cards(limit=15)
+            
+            response["cards_found"] = search_results.get("data", [])
+        except Exception as e:
+            response["cards_found"] = []
+        
+        # Generate flexible response based on current deck state with actual cards
         response["ai_response"] = await self.claude_client.generate_response(
             response["message"],
-            conversation_state
+            conversation_state,
+            response.get("cards_found", [])
         )
         
         # Optionally progress phase if user explicitly wants to move forward
@@ -211,25 +228,39 @@ class DeckBuildingService:
         return response
 
     async def _handle_general_conversation(self, conversation_state: ConversationState, message: str, response: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle general conversation with card search if needed"""
-        # Check if this might benefit from card search
-        if any(keyword in message.lower() for keyword in ["card", "pokemon", "trainer", "energy", "find", "search", "show", "look"]):
+        """Handle general conversation with card search for recommendations"""
+        # Always try to find relevant cards for any deck building conversation
+        try:
             # Try to extract search terms and perform search
             intent_analysis = self.intent_analyzer.analyze_intent(message, conversation_state.current_phase)
             
-            if intent_analysis.needs_database_query:
-                query_params = await self.conversation_service.generate_database_query(
-                    message, intent_analysis.intent_type, conversation_state
-                )
+            # Get search parameters
+            query_params = await self.conversation_service.generate_database_query(
+                message, intent_analysis.intent_type, conversation_state
+            )
+            
+            # Always search for cards to provide concrete recommendations
+            search_results = await search_pokemon_cards(**query_params)
+            response["cards_found"] = search_results.get("data", [])
+            
+            # If no specific cards found, get a random sample for creativity
+            if not response["cards_found"]:
+                # Get some random cards based on current phase
+                if conversation_state.current_phase.value in ["strategy", "core_pokemon"]:
+                    random_results = await search_pokemon_cards(card_types=["Pokémon"], limit=20)
+                elif conversation_state.current_phase.value == "support":
+                    random_results = await search_pokemon_cards(card_types=["Trainer"], limit=20)
+                elif conversation_state.current_phase.value == "energy":
+                    random_results = await search_pokemon_cards(card_types=["Energy"], limit=20)
+                else:
+                    random_results = await search_pokemon_cards(limit=20)
                 
-                # Search for cards
-                try:
-                    search_results = await search_pokemon_cards(**query_params)
-                    response["cards_found"] = search_results.get("data", [])
-                except Exception as e:
-                    response["cards_found"] = []
+                response["cards_found"] = random_results.get("data", [])
+                
+        except Exception as e:
+            response["cards_found"] = []
         
-        # Generate AI response with any found cards
+        # Generate AI response with found cards
         response["ai_response"] = await self.claude_client.generate_response(
             message,
             conversation_state,
