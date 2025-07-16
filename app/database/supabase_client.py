@@ -37,9 +37,12 @@ class SupabaseClient:
             self._client = None
 
 
-# Singleton instance
-supabase_client = SupabaseClient()
+# Singleton instance - initialize lazily
+supabase_client = None
 
 
 async def get_supabase_client() -> Client:
+    global supabase_client
+    if supabase_client is None:
+        supabase_client = SupabaseClient()
     return supabase_client.client

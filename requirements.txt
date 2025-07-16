@@ -12,6 +12,6 @@ python-decouple==3.8
 httpx==0.24.1
 pytest==7.4.3
 pytest-asyncio==0.21.1
-supabase==2.2.0
-postgrest==0.13.0
+supabase==1.0.4
+postgrest==0.10.8
 anthropic==0.34.0
