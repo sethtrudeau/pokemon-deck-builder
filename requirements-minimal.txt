@@ -1,0 +1,6 @@
+fastapi==0.95.2
+uvicorn==0.23.2
+python-decouple==3.8
+httpx==0.24.1
+supabase==1.0.4
+anthropic==0.25.0

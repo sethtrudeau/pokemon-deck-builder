@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Any
 import asyncio
 from datetime import datetime
 
-from .conversation_service import ConversationService, ConversationState, DeckPhase
+from .conversation_service import ConversationService, ConversationState, DeckPhase, UserIntent
 from ..utils.intent_analyzer import IntentAnalyzer, IntentType, FocusArea
 from ..utils.claude_client import ClaudeClient
 from ..database.card_queries import search_pokemon_cards, get_pokemon_card_by_id
@@ -62,9 +62,20 @@ class DeckBuildingService:
                 # Default conversation response
                 response = await self._handle_general_conversation(conversation_state, message, response)
             
+            # Map IntentType to UserIntent
+            intent_mapping = {
+                IntentType.ADD_CARDS: UserIntent.ADD_CARDS,
+                IntentType.REMOVE_CARDS: UserIntent.REMOVE_CARDS,
+                IntentType.CONTINUE_BUILDING: UserIntent.CONTINUE_BUILDING,
+                IntentType.START_OVER: UserIntent.START_NEW_DECK,
+                IntentType.ANALYZE_MATCHUP: UserIntent.ANALYZE_MATCHUPS,
+                IntentType.FINALIZE_DECK: UserIntent.REVIEW_DECK,
+                IntentType.UNKNOWN: UserIntent.UNKNOWN
+            }
+            
             # Update conversation state
             await self.conversation_service.update_conversation_state(
-                conversation_state, message, intent_analysis.intent_type, response.get("cards_found")
+                conversation_state, message, intent_mapping.get(intent_analysis.intent_type, UserIntent.UNKNOWN), response.get("cards_found", [])
             )
             
             # Add conversation state to response
@@ -76,8 +87,15 @@ class DeckBuildingService:
             return {
                 "user_id": user_id,
                 "message": message,
-                "error": str(e),
-                "ai_response": "I apologize, but I encountered an error processing your request. Please try again."
+                "intent": "unknown",
+                "focus_area": "general",
+                "current_phase": "strategy",
+                "cards_found": [],
+                "ai_response": "I apologize, but I encountered an error processing your request. Please try again.",
+                "deck_progress": {"total_cards": 0, "cards_by_type": {"Pokemon": 0, "Trainer": 0, "Energy": 0}, "cards_remaining": 60, "phase_completion": {}, "deck_strategy": None},
+                "phase_complete": False,
+                "conversation_state": {"user_id": user_id, "current_phase": "strategy", "selected_cards": [], "conversation_history": []},
+                "error": str(e)
             }
 
     async def _handle_start_over(self, conversation_state: ConversationState, response: Dict[str, Any]) -> Dict[str, Any]:
