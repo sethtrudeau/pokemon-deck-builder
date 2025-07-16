@@ -31,10 +31,10 @@ class CardQueryBuilder:
         if card_types:
             query = query.in_("card_type", card_types)
         
+        # Temporarily disable pokemon_types filtering to avoid JSONB issues
+        # The cards will be filtered by the AI based on context
         if pokemon_types:
-            # Use text search for type matching - more reliable
-            for ptype in pokemon_types:
-                query = query.ilike("types", f'%{ptype}%')
+            pass  # Skip type filtering for now
         
         if hp_min is not None:
             query = query.gte("hp", hp_min)
