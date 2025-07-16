@@ -119,22 +119,29 @@ class DeckBuildingService:
 
     async def _handle_add_cards(self, conversation_state: ConversationState, intent_analysis, response: Dict[str, Any]) -> Dict[str, Any]:
         """Handle adding cards to the deck"""
-        # Use comprehensive search strategy for card recommendations
         response["cards_found"] = []
         
         try:
-            # Try specific search first if user mentioned specific types
-            if any(keyword in response["message"].lower() for keyword in ["fire", "water", "grass", "electric", "psychic", "fighting", "dark", "metal", "fairy", "dragon", "colorless"]):
-                query_params = await self.conversation_service.generate_database_query(
-                    response["message"], intent_analysis.intent_type, conversation_state
-                )
-                search_results = await search_pokemon_cards(**query_params)
-                response["cards_found"] = search_results.get("data", [])
+            # Use intelligent query generation to understand what user wants
+            query_params = await self.conversation_service.generate_database_query(
+                response["message"], intent_analysis.intent_type, conversation_state
+            )
             
-            # If no specific search or no results, get comprehensive sample
+            # Try the intelligent search first
+            search_results = await search_pokemon_cards(**query_params)
+            response["cards_found"] = search_results.get("data", [])
+            
+            # If no results, try broader search but keep card type if detected
             if not response["cards_found"]:
-                comprehensive_results = await search_pokemon_cards(limit=35)
-                response["cards_found"] = comprehensive_results.get("data", [])
+                fallback_params = {
+                    "limit": 35,
+                    "offset": 0
+                }
+                if "card_types" in query_params:
+                    fallback_params["card_types"] = query_params["card_types"]
+                
+                fallback_results = await search_pokemon_cards(**fallback_params)
+                response["cards_found"] = fallback_results.get("data", [])
             
             # Generate AI response with card recommendations
             response["ai_response"] = await self.claude_client.generate_card_recommendations(
@@ -180,15 +187,33 @@ class DeckBuildingService:
 
     async def _handle_continue_building(self, conversation_state: ConversationState, response: Dict[str, Any]) -> Dict[str, Any]:
         """Handle continuing to build the deck"""
-        # Get a comprehensive selection of cards to provide concrete suggestions
+        response["cards_found"] = []
+        
         try:
-            # Always get a diverse sample of cards for inspiration
-            search_results = await search_pokemon_cards(limit=30)
+            # Get phase-appropriate cards using intelligent query generation
+            intent_analysis = self.intent_analyzer.analyze_intent(response["message"], conversation_state.current_phase)
+            
+            # Generate a query based on current phase to get relevant cards
+            query_params = await self.conversation_service.generate_database_query(
+                response["message"], intent_analysis.intent_type, conversation_state
+            )
+            
+            # Try intelligent search based on phase
+            search_results = await search_pokemon_cards(**query_params)
             response["cards_found"] = search_results.get("data", [])
             
-            # If no cards found, try fallback
+            # If no results, get cards appropriate for current phase
             if not response["cards_found"]:
-                fallback_results = await search_pokemon_cards(limit=20)
+                fallback_params = {"limit": 30, "offset": 0}
+                
+                if conversation_state.current_phase == DeckPhase.CORE_POKEMON:
+                    fallback_params["card_types"] = ["Pokémon"]
+                elif conversation_state.current_phase == DeckPhase.SUPPORT:
+                    fallback_params["card_types"] = ["Trainer"]
+                elif conversation_state.current_phase == DeckPhase.ENERGY:
+                    fallback_params["card_types"] = ["Energy"]
+                
+                fallback_results = await search_pokemon_cards(**fallback_params)
                 response["cards_found"] = fallback_results.get("data", [])
                 
         except Exception as e:
@@ -234,42 +259,33 @@ class DeckBuildingService:
         return response
 
     async def _handle_general_conversation(self, conversation_state: ConversationState, message: str, response: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle general conversation with comprehensive card search"""
-        # Use a smart search strategy that starts broad and gets more specific
+        """Handle general conversation with intelligent card search"""
         response["cards_found"] = []
         
         try:
-            # Strategy 1: Try specific search based on user message
+            # Strategy 1: Use the improved query generation to understand what user wants
             intent_analysis = self.intent_analyzer.analyze_intent(message, conversation_state.current_phase)
             
-            # Only use specific filters if the user is clearly asking for something specific
-            if any(keyword in message.lower() for keyword in ["fire", "water", "grass", "electric", "psychic", "fighting", "dark", "metal", "fairy", "dragon", "colorless"]):
-                # User mentioned specific types, try targeted search
-                query_params = await self.conversation_service.generate_database_query(
-                    message, intent_analysis.intent_type, conversation_state
-                )
-                search_results = await search_pokemon_cards(**query_params)
-                response["cards_found"] = search_results.get("data", [])
+            query_params = await self.conversation_service.generate_database_query(
+                message, intent_analysis.intent_type, conversation_state
+            )
             
-            # Strategy 2: If no specific search or no results, get a diverse sample
+            # Try the intelligent search first
+            search_results = await search_pokemon_cards(**query_params)
+            response["cards_found"] = search_results.get("data", [])
+            
+            # Strategy 2: If no results, try a broader search but still respecting card type if detected
             if not response["cards_found"]:
-                # Get a large, diverse sample of cards
-                if conversation_state.current_phase.value == "strategy":
-                    # For strategy phase, show diverse options from all types
-                    diverse_results = await search_pokemon_cards(limit=30)
-                elif conversation_state.current_phase.value == "core_pokemon":
-                    # For core pokemon phase, focus on Pokemon cards
-                    diverse_results = await search_pokemon_cards(limit=25)
-                elif conversation_state.current_phase.value == "support":
-                    # For support phase, mix of trainers and some pokemon
-                    diverse_results = await search_pokemon_cards(limit=25)
-                elif conversation_state.current_phase.value == "energy":
-                    # For energy phase, still show diverse options
-                    diverse_results = await search_pokemon_cards(limit=25)
-                else:
-                    diverse_results = await search_pokemon_cards(limit=30)
+                # Remove specific filters but keep card type if it was detected
+                fallback_params = {
+                    "limit": 30,
+                    "offset": 0
+                }
+                if "card_types" in query_params:
+                    fallback_params["card_types"] = query_params["card_types"]
                 
-                response["cards_found"] = diverse_results.get("data", [])
+                fallback_results = await search_pokemon_cards(**fallback_params)
+                response["cards_found"] = fallback_results.get("data", [])
             
             # Strategy 3: If still no cards, try basic search with high limit
             if not response["cards_found"]:

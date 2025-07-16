@@ -143,30 +143,34 @@ class ConversationService:
     async def generate_database_query(self, user_message: str, intent: UserIntent, conversation_state: ConversationState) -> Dict[str, Any]:
         """Generate database query parameters based on user message and intent"""
         query_params = {
-            "limit": 20,
+            "limit": 30,  # Increased for better variety
             "offset": 0
         }
         
-        # Extract card name from message
-        name_match = re.search(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b', user_message)
-        if name_match:
-            potential_name = name_match.group(1)
-            # Filter out common words
-            common_words = {"Pokemon", "Card", "Deck", "Strategy", "Energy", "Trainer"}
-            if potential_name not in common_words:
-                query_params["name"] = potential_name
+        message_lower = user_message.lower()
         
-        # Phase-specific filtering
-        if conversation_state.current_phase == DeckPhase.CORE_POKEMON:
+        # FIRST: Detect what TYPE of cards the user wants based on their message
+        card_type_detected = False
+        
+        # Check for Pokemon card requests
+        pokemon_keywords = ["pokemon", "pokémon", "attacker", "basic", "stage 1", "stage 2", "evolution", "ex", "gx", "v", "vmax", "vstar"]
+        if any(keyword in message_lower for keyword in pokemon_keywords):
             query_params["card_types"] = ["Pokémon"]
-            
-        elif conversation_state.current_phase == DeckPhase.SUPPORT:
-            query_params["card_types"] = ["Trainer"]
-            
-        elif conversation_state.current_phase == DeckPhase.ENERGY:
-            query_params["card_types"] = ["Energy"]
+            card_type_detected = True
         
-        # Extract type information
+        # Check for Trainer card requests
+        trainer_keywords = ["trainer", "support", "item", "stadium", "supporter", "tool", "draw", "search"]
+        if any(keyword in message_lower for keyword in trainer_keywords):
+            query_params["card_types"] = ["Trainer"]
+            card_type_detected = True
+        
+        # Check for Energy card requests
+        energy_keywords = ["energy", "basic energy", "special energy"]
+        if any(keyword in message_lower for keyword in energy_keywords):
+            query_params["card_types"] = ["Energy"]
+            card_type_detected = True
+        
+        # Check for Pokemon type mentions (fire, water, etc.) - these imply Pokemon cards
         type_patterns = {
             "fire": ["Fire"],
             "water": ["Water"],
@@ -183,9 +187,31 @@ class ConversationService:
         }
         
         for type_word, type_values in type_patterns.items():
-            if type_word in user_message.lower():
+            if type_word in message_lower:
                 query_params["pokemon_types"] = type_values
+                # If user mentions pokemon types, they want Pokemon cards
+                if not card_type_detected:
+                    query_params["card_types"] = ["Pokémon"]
+                    card_type_detected = True
                 break
+        
+        # FALLBACK: If no specific card type detected, use phase-based filtering
+        if not card_type_detected:
+            if conversation_state.current_phase == DeckPhase.CORE_POKEMON:
+                query_params["card_types"] = ["Pokémon"]
+            elif conversation_state.current_phase == DeckPhase.SUPPORT:
+                query_params["card_types"] = ["Trainer"]
+            elif conversation_state.current_phase == DeckPhase.ENERGY:
+                query_params["card_types"] = ["Energy"]
+        
+        # Extract specific card name from message
+        name_match = re.search(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b', user_message)
+        if name_match:
+            potential_name = name_match.group(1)
+            # Filter out common words
+            common_words = {"Pokemon", "Card", "Deck", "Strategy", "Energy", "Trainer", "Show", "Some", "Find"}
+            if potential_name not in common_words:
+                query_params["name"] = potential_name
         
         # Extract HP range
         hp_match = re.search(r'(\d+)\s*(?:-|to)\s*(\d+)\s*hp', user_message.lower())
