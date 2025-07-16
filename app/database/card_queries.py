@@ -34,7 +34,7 @@ class CardQueryBuilder:
         if pokemon_types:
             # Use contains for array matching in older supabase versions
             for ptype in pokemon_types:
-                query = query.contains("pokemon_types", [ptype])
+                query = query.contains("types", [ptype])
         
         if hp_min is not None:
             query = query.gte("hp", hp_min)
@@ -43,9 +43,8 @@ class CardQueryBuilder:
             query = query.lte("hp", hp_max)
         
         if subtypes:
-            # Use contains for array matching in older supabase versions
-            for subtype in subtypes:
-                query = query.contains("subtypes", [subtype])
+            # Use eq for single subtype matching
+            query = query.in_("subtype", subtypes)
         
         # Apply pagination
         query = query.range(offset, offset + limit - 1)
@@ -77,21 +76,20 @@ class CardQueryBuilder:
         return sorted(list(types))
 
     def get_pokemon_types(self) -> List[str]:
-        result = self.client.table(self.table_name).select("pokemon_types").eq("standard_legal", True).execute()
+        result = self.client.table(self.table_name).select("types").eq("standard_legal", True).execute()
         types = set()
         for row in result.data:
-            if row.get("pokemon_types"):
-                for ptype in row["pokemon_types"]:
+            if row.get("types"):
+                for ptype in row["types"]:
                     types.add(ptype)
         return sorted(list(types))
 
     def get_subtypes(self) -> List[str]:
-        result = self.client.table(self.table_name).select("subtypes").eq("standard_legal", True).execute()
+        result = self.client.table(self.table_name).select("subtype").eq("standard_legal", True).execute()
         subtypes = set()
         for row in result.data:
-            if row.get("subtypes"):
-                for subtype in row["subtypes"]:
-                    subtypes.add(subtype)
+            if row.get("subtype"):
+                subtypes.add(row["subtype"])
         return sorted(list(subtypes))
 
     def get_hp_range(self) -> Dict[str, int]:
