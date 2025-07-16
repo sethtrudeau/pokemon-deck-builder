@@ -243,9 +243,9 @@ class DeckBuildingService:
             search_results = await search_pokemon_cards(**query_params)
             response["cards_found"] = search_results.get("data", [])
             
-            # If no specific cards found, get a random sample for creativity
+            # If no specific cards found, get a broader sample for creativity
             if not response["cards_found"]:
-                # Get some random cards based on current phase
+                # Get some cards based on current phase with broader search
                 if conversation_state.current_phase.value in ["strategy", "core_pokemon"]:
                     random_results = await search_pokemon_cards(card_types=["Pokémon"], limit=20)
                 elif conversation_state.current_phase.value == "support":
@@ -256,6 +256,11 @@ class DeckBuildingService:
                     random_results = await search_pokemon_cards(limit=20)
                 
                 response["cards_found"] = random_results.get("data", [])
+                
+                # If still no cards, try a very basic search
+                if not response["cards_found"]:
+                    basic_results = await search_pokemon_cards(limit=15)
+                    response["cards_found"] = basic_results.get("data", [])
                 
         except Exception as e:
             response["cards_found"] = []
