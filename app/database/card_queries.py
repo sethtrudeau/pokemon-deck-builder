@@ -32,7 +32,9 @@ class CardQueryBuilder:
             query = query.in_("card_type", card_types)
         
         if pokemon_types:
-            query = query.overlaps("pokemon_types", pokemon_types)
+            # Use contains for array matching in older supabase versions
+            for ptype in pokemon_types:
+                query = query.contains("pokemon_types", [ptype])
         
         if hp_min is not None:
             query = query.gte("hp", hp_min)
@@ -41,7 +43,9 @@ class CardQueryBuilder:
             query = query.lte("hp", hp_max)
         
         if subtypes:
-            query = query.overlaps("subtypes", subtypes)
+            # Use contains for array matching in older supabase versions
+            for subtype in subtypes:
+                query = query.contains("subtypes", [subtype])
         
         # Apply pagination
         query = query.range(offset, offset + limit - 1)
