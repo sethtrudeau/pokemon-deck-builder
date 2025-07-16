@@ -32,9 +32,8 @@ class CardQueryBuilder:
             query = query.in_("card_type", card_types)
         
         if pokemon_types:
-            # Use contains for array matching with proper JSON formatting
-            for ptype in pokemon_types:
-                query = query.contains("types", f'["{ptype}"]')
+            # Use overlaps for array matching which is better for JSONB arrays
+            query = query.overlaps("types", pokemon_types)
         
         if hp_min is not None:
             query = query.gte("hp", hp_min)
