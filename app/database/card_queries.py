@@ -32,9 +32,9 @@ class CardQueryBuilder:
             query = query.in_("card_type", card_types)
         
         if pokemon_types:
-            # Use contains for array matching in older supabase versions
+            # Use contains for array matching with proper JSON formatting
             for ptype in pokemon_types:
-                query = query.contains("types", [ptype])
+                query = query.contains("types", f'["{ptype}"]')
         
         if hp_min is not None:
             query = query.gte("hp", hp_min)
