@@ -119,23 +119,31 @@ class DeckBuildingService:
 
     async def _handle_add_cards(self, conversation_state: ConversationState, intent_analysis, response: Dict[str, Any]) -> Dict[str, Any]:
         """Handle adding cards to the deck"""
-        # Generate database query if needed
-        if intent_analysis.needs_database_query:
-            query_params = await self.conversation_service.generate_database_query(
-                response["message"], intent_analysis.intent_type, conversation_state
-            )
+        # Use comprehensive search strategy for card recommendations
+        response["cards_found"] = []
+        
+        try:
+            # Try specific search first if user mentioned specific types
+            if any(keyword in response["message"].lower() for keyword in ["fire", "water", "grass", "electric", "psychic", "fighting", "dark", "metal", "fairy", "dragon", "colorless"]):
+                query_params = await self.conversation_service.generate_database_query(
+                    response["message"], intent_analysis.intent_type, conversation_state
+                )
+                search_results = await search_pokemon_cards(**query_params)
+                response["cards_found"] = search_results.get("data", [])
             
-            # Search for cards
-            search_results = await search_pokemon_cards(**query_params)
-            response["cards_found"] = search_results.get("data", [])
+            # If no specific search or no results, get comprehensive sample
+            if not response["cards_found"]:
+                comprehensive_results = await search_pokemon_cards(limit=35)
+                response["cards_found"] = comprehensive_results.get("data", [])
             
             # Generate AI response with card recommendations
             response["ai_response"] = await self.claude_client.generate_card_recommendations(
                 conversation_state,
                 response["cards_found"]
             )
-        else:
-            # Generate general response
+            
+        except Exception as e:
+            # Fallback to general response
             response["ai_response"] = await self.claude_client.generate_response(
                 response["message"],
                 conversation_state
@@ -172,19 +180,17 @@ class DeckBuildingService:
 
     async def _handle_continue_building(self, conversation_state: ConversationState, response: Dict[str, Any]) -> Dict[str, Any]:
         """Handle continuing to build the deck"""
-        # Get relevant cards to provide concrete suggestions
+        # Get a comprehensive selection of cards to provide concrete suggestions
         try:
-            # Get cards based on current phase
-            if conversation_state.current_phase.value in ["strategy", "core_pokemon"]:
-                search_results = await search_pokemon_cards(card_types=["Pokémon"], limit=15)
-            elif conversation_state.current_phase.value == "support":
-                search_results = await search_pokemon_cards(card_types=["Trainer"], limit=15)
-            elif conversation_state.current_phase.value == "energy":
-                search_results = await search_pokemon_cards(card_types=["Energy"], limit=15)
-            else:
-                search_results = await search_pokemon_cards(limit=15)
-            
+            # Always get a diverse sample of cards for inspiration
+            search_results = await search_pokemon_cards(limit=30)
             response["cards_found"] = search_results.get("data", [])
+            
+            # If no cards found, try fallback
+            if not response["cards_found"]:
+                fallback_results = await search_pokemon_cards(limit=20)
+                response["cards_found"] = fallback_results.get("data", [])
+                
         except Exception as e:
             response["cards_found"] = []
         
@@ -228,42 +234,55 @@ class DeckBuildingService:
         return response
 
     async def _handle_general_conversation(self, conversation_state: ConversationState, message: str, response: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle general conversation with card search for recommendations"""
-        # Always try to find relevant cards for any deck building conversation
+        """Handle general conversation with comprehensive card search"""
+        # Use a smart search strategy that starts broad and gets more specific
+        response["cards_found"] = []
+        
         try:
-            # Try to extract search terms and perform search
+            # Strategy 1: Try specific search based on user message
             intent_analysis = self.intent_analyzer.analyze_intent(message, conversation_state.current_phase)
             
-            # Get search parameters
-            query_params = await self.conversation_service.generate_database_query(
-                message, intent_analysis.intent_type, conversation_state
-            )
+            # Only use specific filters if the user is clearly asking for something specific
+            if any(keyword in message.lower() for keyword in ["fire", "water", "grass", "electric", "psychic", "fighting", "dark", "metal", "fairy", "dragon", "colorless"]):
+                # User mentioned specific types, try targeted search
+                query_params = await self.conversation_service.generate_database_query(
+                    message, intent_analysis.intent_type, conversation_state
+                )
+                search_results = await search_pokemon_cards(**query_params)
+                response["cards_found"] = search_results.get("data", [])
             
-            # Always search for cards to provide concrete recommendations
-            search_results = await search_pokemon_cards(**query_params)
-            response["cards_found"] = search_results.get("data", [])
-            
-            # If no specific cards found, get a broader sample for creativity
+            # Strategy 2: If no specific search or no results, get a diverse sample
             if not response["cards_found"]:
-                # Get some cards based on current phase with broader search
-                if conversation_state.current_phase.value in ["strategy", "core_pokemon"]:
-                    random_results = await search_pokemon_cards(card_types=["Pokémon"], limit=20)
+                # Get a large, diverse sample of cards
+                if conversation_state.current_phase.value == "strategy":
+                    # For strategy phase, show diverse options from all types
+                    diverse_results = await search_pokemon_cards(limit=30)
+                elif conversation_state.current_phase.value == "core_pokemon":
+                    # For core pokemon phase, focus on Pokemon cards
+                    diverse_results = await search_pokemon_cards(limit=25)
                 elif conversation_state.current_phase.value == "support":
-                    random_results = await search_pokemon_cards(card_types=["Trainer"], limit=20)
+                    # For support phase, mix of trainers and some pokemon
+                    diverse_results = await search_pokemon_cards(limit=25)
                 elif conversation_state.current_phase.value == "energy":
-                    random_results = await search_pokemon_cards(card_types=["Energy"], limit=20)
+                    # For energy phase, still show diverse options
+                    diverse_results = await search_pokemon_cards(limit=25)
                 else:
-                    random_results = await search_pokemon_cards(limit=20)
+                    diverse_results = await search_pokemon_cards(limit=30)
                 
-                response["cards_found"] = random_results.get("data", [])
-                
-                # If still no cards, try a very basic search
-                if not response["cards_found"]:
-                    basic_results = await search_pokemon_cards(limit=15)
-                    response["cards_found"] = basic_results.get("data", [])
+                response["cards_found"] = diverse_results.get("data", [])
+            
+            # Strategy 3: If still no cards, try basic search with high limit
+            if not response["cards_found"]:
+                basic_results = await search_pokemon_cards(limit=40)
+                response["cards_found"] = basic_results.get("data", [])
                 
         except Exception as e:
-            response["cards_found"] = []
+            # Final fallback: try simple search
+            try:
+                fallback_results = await search_pokemon_cards(limit=20)
+                response["cards_found"] = fallback_results.get("data", [])
+            except:
+                response["cards_found"] = []
         
         # Generate AI response with found cards
         response["ai_response"] = await self.claude_client.generate_response(
