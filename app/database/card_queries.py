@@ -32,10 +32,9 @@ class CardQueryBuilder:
             query = query.in_("card_type", card_types)
         
         if pokemon_types:
-            # Use overlap operator for JSONB array matching
-            # This should work better with Supabase
+            # Use text search for type matching - more reliable
             for ptype in pokemon_types:
-                query = query.filter("types", "cs", f'["{ptype}"]')
+                query = query.ilike("types", f'%{ptype}%')
         
         if hp_min is not None:
             query = query.gte("hp", hp_min)
