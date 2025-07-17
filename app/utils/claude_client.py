@@ -150,7 +150,7 @@ Remember: Great deck building combines solid fundamentals with creative innovati
         if available_cards:
             context_parts.append(f"## Available Cards for Analysis ({len(available_cards)} found):")
             context_parts.append("**IMPORTANT: You can ONLY recommend cards from this list. Do not suggest any other cards.**")
-            for i, card in enumerate(available_cards[:15], 1):  # Show more cards
+            for i, card in enumerate(available_cards[:50], 1):  # Show up to 50 cards
                 name = card.get("name", "Unknown")
                 card_type = card.get("card_type", "Unknown")
                 subtype = card.get("subtype", "")
@@ -179,8 +179,8 @@ Remember: Great deck building combines solid fundamentals with creative innovati
                 description = " | ".join(desc_parts)
                 context_parts.append(f"{i}. {name} - {description}")
             
-            if len(available_cards) > 15:
-                context_parts.append(f"... and {len(available_cards) - 15} more cards available")
+            if len(available_cards) > 50:
+                context_parts.append(f"... and {len(available_cards) - 50} more cards available")
         else:
             context_parts.append("## No Cards Available:")
             context_parts.append("No specific cards found in database. Ask the user to be more specific about what they're looking for so you can search for relevant cards.")
@@ -348,16 +348,30 @@ Consider:
                     print(f"DEBUG: Detected strategy '{strategy}' - searching for cards...")
                     all_broad_results = []
                     
-                    # Get first 3000 cards across multiple pages
-                    for page in range(3):
+                    # Get ALL standard legal cards across multiple pages
+                    page = 0
+                    while True:
                         offset = page * 1000
                         print(f"DEBUG: Fetching page {page + 1} with offset {offset}")
                         broad_results = query_builder.search_cards(limit=1000, offset=offset)
                         page_cards = broad_results.get("data", [])
+                        
+                        if not page_cards:  # No more results
+                            print(f"DEBUG: No more cards found on page {page + 1}")
+                            break
+                            
                         all_broad_results.extend(page_cards)
                         print(f"DEBUG: Page {page + 1}: Got {len(page_cards)} cards (total so far: {len(all_broad_results)})")
+                        
                         if len(page_cards) < 1000:  # Last page
                             print(f"DEBUG: Reached end of results on page {page + 1}")
+                            break
+                            
+                        page += 1
+                        
+                        # Safety limit to prevent infinite loops
+                        if page > 10:  # Max 10,000 cards
+                            print("DEBUG: Hit safety limit of 10 pages")
                             break
                     
                     print(f"DEBUG: Total cards to analyze: {len(all_broad_results)}")

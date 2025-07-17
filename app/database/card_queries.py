@@ -51,7 +51,9 @@ class CardQueryBuilder:
             query = query.in_("subtype", subtypes)
         
         # Apply pagination
-        query = query.range(offset, offset + limit - 1)
+        # Supabase range is inclusive on start, exclusive on end: range(start, end) includes start but excludes end
+        # So to get `limit` items starting at `offset`, we need range(offset, offset + limit)
+        query = query.range(offset, offset + limit)
         
         # Execute query
         result = query.execute()
