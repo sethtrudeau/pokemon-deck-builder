@@ -25,7 +25,7 @@ class PokemonCardImporter:
         self.supabase: Client = create_client(supabase_url, supabase_key)
         
         # Current standard legal regulation marks (update as rotation changes)
-        self.current_standard_marks = ['G', 'H', 'I']  # Update this when rotation happens
+        self.current_standard_marks = ['F', 'G', 'H', 'I']  # Update this when rotation happens
         
         # Headers for Pokemon TCG API
         self.headers = {
@@ -109,18 +109,14 @@ class PokemonCardImporter:
 
     def determine_standard_legal(self, card_data: Dict[str, Any]) -> bool:
         """Determine if a card is currently standard legal"""
-        # Check regulation mark first (official Pokemon rotation system)
-        regulation_mark = card_data.get('regulationMark')
-        if regulation_mark in self.current_standard_marks:
-            return True
-        
-        # Reject cards with null or old regulation marks
-        if regulation_mark is None or regulation_mark in ['D', 'E', 'F']:
-            return False
-        
-        # Fallback: check API legalities only for cards with valid regulation marks
+        # Primary check: Use API legalities as the source of truth
         legalities = card_data.get('legalities', {})
         if legalities.get('standard') == 'Legal':
+            return True
+        
+        # Secondary check: regulation marks (but don't reject None)
+        regulation_mark = card_data.get('regulationMark')
+        if regulation_mark in self.current_standard_marks:
             return True
             
         return False

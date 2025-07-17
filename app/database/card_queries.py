@@ -24,6 +24,10 @@ class CardQueryBuilder:
         # Base filter for standard legal cards
         query = query.eq("standard_legal", True)
         
+        # DEBUG: Print what we're searching for
+        print(f"DEBUG: Database search - limit: {limit}, offset: {offset}")
+        print(f"DEBUG: Filters - name: {name}, card_types: {card_types}, pokemon_types: {pokemon_types}")
+        
         # Build dynamic WHERE clauses
         if name:
             query = query.ilike("name", f"%{name}%")

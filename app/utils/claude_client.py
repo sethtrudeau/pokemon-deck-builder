@@ -303,6 +303,9 @@ Consider:
         print(f"DEBUG: Search found {len(search_results)} cards")
         if search_results:
             print(f"DEBUG: First card: {search_results[0].get('name', 'Unknown')}")
+            print(f"DEBUG: First 5 cards: {[card.get('name', 'Unknown') for card in search_results[:5]]}")
+        else:
+            print("DEBUG: No cards found in search!")
         
         # Generate response with found cards
         response = await self.generate_response(
@@ -341,16 +344,33 @@ Consider:
         for strategy, keywords in strategic_searches.items():
             if strategy in user_lower or any(keyword in user_lower for keyword in keywords):
                 try:
-                    # Get broad sample to analyze
-                    broad_results = query_builder.search_cards(limit=120)
+                    # Get broad sample to analyze - try multiple pages
+                    print(f"DEBUG: Detected strategy '{strategy}' - searching for cards...")
+                    all_broad_results = []
+                    
+                    # Get first 3000 cards across multiple pages
+                    for page in range(3):
+                        offset = page * 1000
+                        print(f"DEBUG: Fetching page {page + 1} with offset {offset}")
+                        broad_results = query_builder.search_cards(limit=1000, offset=offset)
+                        page_cards = broad_results.get("data", [])
+                        all_broad_results.extend(page_cards)
+                        print(f"DEBUG: Page {page + 1}: Got {len(page_cards)} cards (total so far: {len(all_broad_results)})")
+                        if len(page_cards) < 1000:  # Last page
+                            print(f"DEBUG: Reached end of results on page {page + 1}")
+                            break
+                    
+                    print(f"DEBUG: Total cards to analyze: {len(all_broad_results)}")
                     filtered_results = [
-                        card for card in broad_results.get("data", [])
+                        card for card in all_broad_results
                         if self._card_matches_strategy(card, strategy, keywords)
                     ]
+                    print(f"DEBUG: Filtered down to {len(filtered_results)} cards matching strategy")
                     all_results.extend(filtered_results)
                     found_strategic = True
                     break
-                except:
+                except Exception as e:
+                    print(f"DEBUG: Error in strategic search: {e}")
                     continue
         
         # Strategy 2: Structured search based on detected card types
@@ -418,7 +438,10 @@ Consider:
                 "each of your opponent's pokemon", "bench damage", "damage to all",
                 "each pokemon", "all pokemon"
             ]
-            return any(phrase in searchable_text for phrase in spread_phrases)
+            found_match = any(phrase in searchable_text for phrase in spread_phrases)
+            if found_match:
+                print(f"DEBUG: Found spread damage card: {card.get('name', 'Unknown')}")
+            return found_match
         
         # Check for other strategies
         return any(keyword in searchable_text for keyword in keywords)
