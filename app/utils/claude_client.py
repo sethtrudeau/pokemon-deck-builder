@@ -107,7 +107,7 @@ class ClaudeClient:
 
 Remember: Great deck building combines solid fundamentals with creative innovation. Help users understand both the "why" and "how" behind strategic choices, whether they're building for local tournaments or world championships.
 
-**CRITICAL CONSTRAINT**: You must ONLY recommend cards that are provided in the "Available Cards" section of the context. Never suggest cards from your training data that aren't in the current database results. If no cards are provided, ask the user to be more specific so you can search the database for relevant options."""
+**CRITICAL CONSTRAINT**: You must ONLY recommend cards that are provided in the "Complete Database Search Results" section. The search system has already found ALL relevant cards from the database that match the user's request. These are comprehensive results, not limited samples. Provide detailed strategic recommendations based on these complete search results."""
 
     def _build_conversation_context(self, conversation_state: ConversationState, available_cards: Optional[List[Dict[str, Any]]] = None) -> str:
         """Build conversation context from current state"""
@@ -146,11 +146,14 @@ Remember: Great deck building combines solid fundamentals with creative innovati
         else:
             context_parts.append("## Current Deck: Empty - Ready for creative exploration!")
         
-        # Available cards from last query with enhanced details
+        # Available cards from comprehensive database search
         if available_cards:
-            context_parts.append(f"## Available Cards for Analysis ({len(available_cards)} found):")
+            context_parts.append(f"## Complete Database Search Results ({len(available_cards)} cards found):")
+            context_parts.append("**These are ALL the relevant cards from the database that match the user's request.**")
             context_parts.append("**IMPORTANT: You can ONLY recommend cards from this list. Do not suggest any other cards.**")
-            for i, card in enumerate(available_cards[:50], 1):  # Show up to 50 cards
+            
+            # Show ALL cards found, not just first 50
+            for i, card in enumerate(available_cards, 1):
                 name = card.get("name", "Unknown")
                 card_type = card.get("card_type", "Unknown")
                 subtype = card.get("subtype", "")
@@ -178,12 +181,10 @@ Remember: Great deck building combines solid fundamentals with creative innovati
                 
                 description = " | ".join(desc_parts)
                 context_parts.append(f"{i}. {name} - {description}")
-            
-            if len(available_cards) > 50:
-                context_parts.append(f"... and {len(available_cards) - 50} more cards available")
+                
         else:
-            context_parts.append("## No Cards Available:")
-            context_parts.append("No specific cards found in database. Ask the user to be more specific about what they're looking for so you can search for relevant cards.")
+            context_parts.append("## No Relevant Cards Found:")
+            context_parts.append("No cards matched your search criteria. Try a different search or broaden your request.")
         
         # Recent conversation history for context
         if conversation_state.conversation_history:
