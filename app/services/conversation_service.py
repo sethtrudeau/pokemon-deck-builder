@@ -143,9 +143,22 @@ class ConversationService:
     async def generate_database_query(self, user_message: str, intent: UserIntent, conversation_state: ConversationState) -> Dict[str, Any]:
         """Generate database query parameters based on user message and intent"""
         query_params = {
-            "limit": 30,  # Increased for better variety
+            "limit": 80,  # Increased for comprehensive search results
             "offset": 0
         }
+        
+        # Check for strategic keywords that require broader searches
+        strategic_keywords = [
+            "spread damage", "spread", "bench damage", "all pokemon", "each pokemon",
+            "draw power", "search", "acceleration", "disruption", "stall",
+            "ability", "attack", "effect", "synergy", "combo"
+        ]
+        
+        has_strategic_intent = any(keyword in message_lower for keyword in strategic_keywords)
+        if has_strategic_intent:
+            # For strategic searches, use minimal filters to get broad results
+            # Let the AI analyze the full card set for strategic matches
+            return {"limit": 120, "offset": 0}
         
         message_lower = user_message.lower()
         
@@ -172,22 +185,22 @@ class ConversationService:
         
         # Check for Pokemon type mentions (fire, water, etc.) - these imply Pokemon cards
         type_patterns = {
-            "fire": ["Fire"],
-            "water": ["Water"],
-            "grass": ["Grass"],
-            "electric": ["Lightning"],
-            "lightning": ["Lightning"],
-            "psychic": ["Psychic"],
-            "fighting": ["Fighting"],
-            "darkness": ["Darkness"],
-            "metal": ["Metal"],
-            "fairy": ["Fairy"],
-            "dragon": ["Dragon"],
-            "colorless": ["Colorless"]
+            r'\bfire\b': ["Fire"],
+            r'\bwater\b': ["Water"],
+            r'\bgrass\b': ["Grass"],
+            r'\belectric\b': ["Lightning"],
+            r'\blightning\b': ["Lightning"],
+            r'\bpsychic\b': ["Psychic"],
+            r'\bfighting\b': ["Fighting"],
+            r'\bdarkness\b': ["Darkness"],
+            r'\bmetal\b': ["Metal"],
+            r'\bfairy\b': ["Fairy"],
+            r'\bdragon\b': ["Dragon"],
+            r'\bcolorless\b': ["Colorless"]
         }
         
-        for type_word, type_values in type_patterns.items():
-            if type_word in message_lower:
+        for type_pattern, type_values in type_patterns.items():
+            if re.search(type_pattern, message_lower):
                 query_params["pokemon_types"] = type_values
                 # If user mentions pokemon types, they want Pokemon cards
                 if not card_type_detected:
@@ -204,14 +217,15 @@ class ConversationService:
             elif conversation_state.current_phase == DeckPhase.ENERGY:
                 query_params["card_types"] = ["Energy"]
         
-        # Extract specific card name from message
-        name_match = re.search(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b', user_message)
-        if name_match:
-            potential_name = name_match.group(1)
-            # Filter out common words
-            common_words = {"Pokemon", "Card", "Deck", "Strategy", "Energy", "Trainer", "Show", "Some", "Find"}
-            if potential_name not in common_words:
-                query_params["name"] = potential_name
+        # Extract specific card name from message (but not for strategic searches)
+        if not has_strategic_intent:
+            name_match = re.search(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b', user_message)
+            if name_match:
+                potential_name = name_match.group(1)
+                # Filter out common words
+                common_words = {"Pokemon", "Card", "Deck", "Strategy", "Energy", "Trainer", "Show", "Some", "Find", "Spread", "Damage", "Attack", "Ability"}
+                if potential_name not in common_words:
+                    query_params["name"] = potential_name
         
         # Extract HP range
         hp_match = re.search(r'(\d+)\s*(?:-|to)\s*(\d+)\s*hp', user_message.lower())
@@ -226,23 +240,23 @@ class ConversationService:
                 query_params["hp_min"] = hp_value - 20
                 query_params["hp_max"] = hp_value + 20
         
-        # Extract subtypes
+        # Extract subtypes - use word boundaries to avoid partial matches
         subtype_patterns = {
-            "basic": ["Basic"],
-            "stage 1": ["Stage 1"],
-            "stage 2": ["Stage 2"],
-            "ex": ["Pokémon ex"],
-            "gx": ["Pokémon GX"],
-            "v": ["Pokémon V"],
-            "vmax": ["Pokémon VMAX"],
-            "supporter": ["Supporter"],
-            "item": ["Item"],
-            "stadium": ["Stadium"],
-            "tool": ["Pokémon Tool"]
+            r'\bbasic\b': ["Basic"],
+            r'\bstage 1\b': ["Stage 1"],
+            r'\bstage 2\b': ["Stage 2"],
+            r'\bex\b': ["Pokémon ex"],
+            r'\bgx\b': ["Pokémon GX"],
+            r'\bv\b': ["Pokémon V"],
+            r'\bvmax\b': ["Pokémon VMAX"],
+            r'\bsupporter\b': ["Supporter"],
+            r'\bitem\b': ["Item"],
+            r'\bstadium\b': ["Stadium"],
+            r'\btool\b': ["Pokémon Tool"]
         }
         
-        for subtype_word, subtype_values in subtype_patterns.items():
-            if subtype_word in user_message.lower():
+        for subtype_pattern, subtype_values in subtype_patterns.items():
+            if re.search(subtype_pattern, user_message.lower()):
                 query_params["subtypes"] = subtype_values
                 break
         

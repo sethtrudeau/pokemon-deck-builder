@@ -9,6 +9,7 @@ from decouple import config
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from app.routers import cards, decks, users, auth
+from app.api import simple_chat
 
 
 @asynccontextmanager
@@ -76,6 +77,7 @@ app.include_router(auth.router, prefix="/auth", tags=["authentication"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(cards.router, prefix="/cards", tags=["cards"])
 app.include_router(decks.router, prefix="/decks", tags=["decks"])
+app.include_router(simple_chat.router, prefix="/api", tags=["simple-chat"])
 
 @app.get("/")
 async def root():
@@ -86,6 +88,7 @@ async def root():
             "health": "/health",
             "docs": "/docs",
             "pokemon_chat": "/decks/pokemon-chat",
+            "simple_chat": "/api/simple-chat",
             "card_search": "/cards/search",
             "card_filters": "/cards/filters"
         }

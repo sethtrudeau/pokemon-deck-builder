@@ -134,7 +134,7 @@ class DeckBuildingService:
             # If no results, try broader search but keep card type if detected
             if not response["cards_found"]:
                 fallback_params = {
-                    "limit": 35,
+                    "limit": 80,
                     "offset": 0
                 }
                 if "card_types" in query_params:
@@ -204,7 +204,7 @@ class DeckBuildingService:
             
             # If no results, get cards appropriate for current phase
             if not response["cards_found"]:
-                fallback_params = {"limit": 30, "offset": 0}
+                fallback_params = {"limit": 80, "offset": 0}
                 
                 if conversation_state.current_phase == DeckPhase.CORE_POKEMON:
                     fallback_params["card_types"] = ["Pokémon"]
@@ -278,7 +278,7 @@ class DeckBuildingService:
             if not response["cards_found"]:
                 # Remove specific filters but keep card type if it was detected
                 fallback_params = {
-                    "limit": 30,
+                    "limit": 80,
                     "offset": 0
                 }
                 if "card_types" in query_params:
@@ -289,13 +289,13 @@ class DeckBuildingService:
             
             # Strategy 3: If still no cards, try basic search with high limit
             if not response["cards_found"]:
-                basic_results = await search_pokemon_cards(limit=40)
+                basic_results = await search_pokemon_cards(limit=100)
                 response["cards_found"] = basic_results.get("data", [])
                 
         except Exception as e:
             # Final fallback: try simple search
             try:
-                fallback_results = await search_pokemon_cards(limit=20)
+                fallback_results = await search_pokemon_cards(limit=50)
                 response["cards_found"] = fallback_results.get("data", [])
             except:
                 response["cards_found"] = []

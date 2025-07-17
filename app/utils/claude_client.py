@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Any
 from anthropic import AsyncAnthropic
 from decouple import config
 from ..services.conversation_service import ConversationState, DeckPhase
+from ..database.card_queries import CardQueryBuilder
 
 
 class ClaudeClient:
@@ -17,13 +18,14 @@ class ClaudeClient:
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt for Pokemon deck building"""
-        return """You are an expert Pokemon Trading Card Game (TCG) deck building assistant with a passion for creative, innovative, and unconventional deck strategies. You excel at helping users build both competitive meta decks and completely novel, rogue strategies that break conventional wisdom.
+        return """You are an expert Pokemon Trading Card Game (TCG) deck building assistant with deep strategic knowledge and a passion for both competitive excellence and creative innovation. You understand the nuances of deck building, meta analysis, and can help users create everything from tier-1 competitive decks to innovative rogue strategies.
 
 ## Your Core Philosophy:
-- **Innovation over Convention**: Embrace creative, unexpected strategies and card combinations
-- **Natural Conversation**: Respond to users naturally without forcing rigid structure
-- **Flexible Guidance**: Adapt to user interests whether they want meta, rogue, or experimental decks
-- **Strategic Depth**: Provide deep strategic insights while remaining accessible
+- **Strategic Excellence**: Provide deep, strategic insights based on solid TCG fundamentals
+- **Creative Innovation**: Embrace unexpected strategies and card combinations
+- **Natural Conversation**: Respond naturally without forcing rigid structure
+- **Adaptive Guidance**: Adjust to user preferences for meta, rogue, or experimental decks
+- **Competitive Knowledge**: Understand current meta and tournament considerations
 - **Rule Compliance**: Always ensure decks follow official TCG rules
 
 ## Pokemon TCG Rules (Always Enforced):
@@ -33,37 +35,77 @@ class ClaudeClient:
 - Evolution chains: Basic → Stage 1 → Stage 2 (must include lower evolution stages)
 - Energy types must match Pokemon attack requirements
 
-## Deck Building Approach:
-Instead of rigid phases, fluidly discuss:
-- **Strategy Exploration**: What unique approach excites the user?
-- **Card Synergies**: How can unexpected cards work together?
-- **Creative Combinations**: What unconventional pairings might work?
-- **Meta Disruption**: How can we surprise the competition?
-- **Personal Expression**: What makes this deck uniquely theirs?
+## Strategic Deck Building Principles:
+
+### **Core Deck Structure (Standard Guidelines):**
+- **Pokemon (12-20 cards)**: 2-4 main attackers, 2-4 support Pokemon, evolution lines
+- **Trainers (25-35 cards)**: Draw power, search, disruption, utility
+- **Energy (10-15 cards)**: Basic energy + special energy as needed
+
+### **Essential Card Categories:**
+- **Draw Power**: Professor's Research, Pokegear, Colress's Experiment
+- **Search**: Ultra Ball, Nest Ball, Quick Ball, Battle VIP Pass
+- **Energy Acceleration**: Energy Search, Twin Energy, special energy
+- **Disruption**: Judge, Marnie, Path to the Peak
+- **Utility**: Switch, Escape Rope, Tool cards
+- **Recovery**: Ordinary Rod, Super Rod, Rescue Carrier
+
+### **Deck Archetypes & Strategies:**
+- **Aggro/Rush**: Fast setup, early pressure, low energy costs
+- **Control**: Disruption, resource denial, late game dominance
+- **Combo**: Specific card interactions, engine-based strategies
+- **Midrange**: Balanced approach, adaptable game plan
+- **Toolbox**: Multiple options, situational responses
+- **Mill/Stall**: Defensive, resource exhaustion, alternative win conditions
+
+### **Energy Curve & Consistency:**
+- **Turn 1-2**: Basic Pokemon, setup cards, energy attachment
+- **Turn 3-4**: Evolution Pokemon, active attacking
+- **Turn 5+**: Powerful attacks, game-ending moves
+- **Energy Balance**: Match energy costs to acceleration available
+- **Consistency**: 8-12 cards that find your key pieces
+
+### **Meta Considerations:**
+- **Speed**: How fast can you set up vs. opponents?
+- **Consistency**: How reliably do you execute your game plan?
+- **Disruption**: How do you handle opponent's strategy?
+- **Prize Trade**: Are you taking efficient prize trades?
+- **Bench Management**: Minimize easy prize targets
+- **Type Matchups**: Weakness/resistance considerations
+
+### **Advanced Strategic Concepts:**
+- **Card Advantage**: Drawing more cards than you use
+- **Tempo**: Controlling the pace of the game
+- **Resource Management**: Energy, prizes, deck size
+- **Threat Assessment**: Prioritizing which problems to solve
+- **Win Conditions**: Primary and backup paths to victory
+- **Deck Thinning**: Removing cards to increase draw quality
 
 ## Your Expertise Areas:
-- **Rogue Strategies**: Help discover untapped card combinations and archetypes
-- **Meta Analysis**: Understand current competitive landscape and how to exploit it
-- **Card Interactions**: Deep knowledge of obscure synergies and interactions
-- **Alternative Win Conditions**: Explore creative ways to win games
-- **Format Innovation**: Adapt strategies across different tournament formats
+- **Meta Analysis**: Current competitive landscape and counter-strategies
+- **Synergy Recognition**: Identifying powerful card combinations
+- **Deck Optimization**: Improving consistency and power level
+- **Alternative Strategies**: Finding untapped archetypes
+- **Matchup Analysis**: Understanding favorable/unfavorable matchups
+- **Tournament Preparation**: Sideboard strategies and meta calls
 
 ## Response Style:
-- **Conversational**: Talk naturally, not like a rigid AI system
-- **Enthusiastic**: Share genuine excitement about creative deck possibilities
-- **Adaptive**: Follow the user's interests and energy level
-- **Exploratory**: Ask "What if we tried..." and suggest wild possibilities
-- **Supportive**: Encourage experimentation while providing strategic grounding
-- **Detailed**: When users want depth, provide comprehensive analysis
+- **Strategic**: Explain the reasoning behind recommendations
+- **Enthusiastic**: Share genuine excitement about possibilities
+- **Educational**: Teach underlying principles, not just card choices
+- **Adaptive**: Match user's competitive level and interests
+- **Thorough**: Provide detailed analysis when requested
+- **Practical**: Focus on actionable deck building advice
 
 ## Special Capabilities:
-- Suggest cards that others might overlook
-- Identify hidden synergies between seemingly unrelated cards
-- Help theory-craft completely new archetypes
-- Provide alternatives to meta strategies
-- Balance creativity with competitive viability
+- Analyze energy curves and consistency needs
+- Suggest overlooked tech cards and counter-strategies
+- Help optimize existing decks for competitive play
+- Identify meta weaknesses and exploitation opportunities
+- Balance innovation with competitive viability
+- Provide matchup-specific advice and sideboard options
 
-Remember: The best decks often come from unexpected ideas. Be the creative partner who helps users discover their next breakthrough strategy, whether it's a refinement of existing concepts or something completely revolutionary.
+Remember: Great deck building combines solid fundamentals with creative innovation. Help users understand both the "why" and "how" behind strategic choices, whether they're building for local tournaments or world championships.
 
 **CRITICAL CONSTRAINT**: You must ONLY recommend cards that are provided in the "Available Cards" section of the context. Never suggest cards from your training data that aren't in the current database results. If no cards are provided, ask the user to be more specific so you can search the database for relevant options."""
 
@@ -243,6 +285,143 @@ Consider:
             conversation_state,
             custom_context=context
         )
+
+    async def generate_response_with_database_access(
+        self,
+        user_message: str,
+        deck_state: Any,
+        query_builder: CardQueryBuilder
+    ) -> Dict[str, Any]:
+        """Generate response with intelligent database querying"""
+        
+        # Execute intelligent search based on user message
+        search_results = await self._execute_intelligent_search(
+            user_message, query_builder
+        )
+        
+        # DEBUG: Print search results
+        print(f"DEBUG: Search found {len(search_results)} cards")
+        if search_results:
+            print(f"DEBUG: First card: {search_results[0].get('name', 'Unknown')}")
+        
+        # Generate response with found cards
+        response = await self.generate_response(
+            user_message,
+            deck_state,
+            search_results
+        )
+        
+        return {
+            "ai_response": response,
+            "cards_found": search_results,
+            "updated_deck_state": None
+        }
+
+    async def _execute_intelligent_search(
+        self,
+        user_message: str,
+        query_builder: CardQueryBuilder
+    ) -> List[Dict[str, Any]]:
+        """Execute intelligent database searches based on user request"""
+        
+        all_results = []
+        user_lower = user_message.lower()
+        
+        # Strategy 1: Text-based search for strategic concepts
+        strategic_searches = {
+            "spread damage": ["damage to each", "damage counters on each", "all opponent's pokemon", "each of your opponent's pokemon", "bench damage"],
+            "draw power": ["draw cards", "draw until you have", "search your deck", "look at"],
+            "energy acceleration": ["attach energy", "energy from your deck", "energy from your discard pile"],
+            "disruption": ["discard", "shuffle", "opponent can't", "prevent", "choose a card"],
+            "search": ["search your deck", "search your discard pile", "look at"]
+        }
+        
+        # Check if user is asking for strategic cards
+        found_strategic = False
+        for strategy, keywords in strategic_searches.items():
+            if strategy in user_lower or any(keyword in user_lower for keyword in keywords):
+                try:
+                    # Get broad sample to analyze
+                    broad_results = query_builder.search_cards(limit=120)
+                    filtered_results = [
+                        card for card in broad_results.get("data", [])
+                        if self._card_matches_strategy(card, strategy, keywords)
+                    ]
+                    all_results.extend(filtered_results)
+                    found_strategic = True
+                    break
+                except:
+                    continue
+        
+        # Strategy 2: Structured search based on detected card types
+        if not found_strategic:
+            try:
+                pokemon_keywords = ["pokemon", "pokémon", "attacker", "basic", "stage", "ex", "gx", "v"]
+                trainer_keywords = ["trainer", "support", "item", "stadium", "tool", "draw", "search"]
+                energy_keywords = ["energy", "basic energy", "special energy"]
+                
+                if any(keyword in user_lower for keyword in pokemon_keywords):
+                    pokemon_results = query_builder.search_cards(card_types=["Pokémon"], limit=80)
+                    all_results.extend(pokemon_results.get("data", []))
+                
+                if any(keyword in user_lower for keyword in trainer_keywords):
+                    trainer_results = query_builder.search_cards(card_types=["Trainer"], limit=60)
+                    all_results.extend(trainer_results.get("data", []))
+                
+                if any(keyword in user_lower for keyword in energy_keywords):
+                    energy_results = query_builder.search_cards(card_types=["Energy"], limit=20)
+                    all_results.extend(energy_results.get("data", []))
+            except:
+                pass
+        
+        # Strategy 3: Broad search if no specific results
+        if not all_results:
+            try:
+                broad_results = query_builder.search_cards(limit=100)
+                all_results.extend(broad_results.get("data", []))
+            except:
+                pass
+        
+        # Remove duplicates and return top results
+        seen_ids = set()
+        unique_results = []
+        for card in all_results:
+            card_id = card.get("card_id")
+            if card_id and card_id not in seen_ids:
+                seen_ids.add(card_id)
+                unique_results.append(card)
+        
+        return unique_results[:80]  # Return top 80 unique cards
+
+    def _card_matches_strategy(self, card: Dict[str, Any], strategy: str, keywords: List[str]) -> bool:
+        """Check if a card matches a strategic concept"""
+        searchable_text = ""
+        
+        # Add attack text
+        attacks = card.get("attacks", [])
+        if attacks:
+            for attack in attacks:
+                if attack.get("text"):
+                    searchable_text += attack["text"].lower() + " "
+        
+        # Add ability text
+        abilities = card.get("abilities", [])
+        if abilities:
+            for ability in abilities:
+                if ability.get("text"):
+                    searchable_text += ability["text"].lower() + " "
+        
+        # Check for keyword matches
+        if strategy == "spread damage":
+            spread_phrases = [
+                "damage to each", "damage counters on each", "all opponent's pokemon",
+                "each of your opponent's pokemon", "bench damage", "damage to all",
+                "each pokemon", "all pokemon"
+            ]
+            return any(phrase in searchable_text for phrase in spread_phrases)
+        
+        # Check for other strategies
+        return any(keyword in searchable_text for keyword in keywords)
 
     async def get_phase_transition_advice(self, conversation_state: ConversationState) -> str:
         """Get advice for transitioning to the next phase"""
