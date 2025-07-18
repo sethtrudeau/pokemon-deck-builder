@@ -4,6 +4,7 @@ from anthropic import AsyncAnthropic
 from decouple import config
 from ..services.conversation_service import ConversationState, DeckPhase
 from ..database.card_queries import CardQueryBuilder
+from .memory_cache import get_memory_cache_manager, MemoryCache
 
 
 class ClaudeClient:
@@ -69,9 +70,13 @@ When providing deck building advice, always:
 - Evolution chains: Basic → Stage 1 → Stage 2 (must include lower stages)
 - Energy types must match Pokemon attack requirements
 
-**CRITICAL CONSTRAINT**: You must ONLY recommend cards from the "Complete Database Search Results" section. These are ALL the relevant cards from the database - analyze them comprehensively to provide strategic deck building guidance."""
+**CRITICAL CONSTRAINT**: You can recommend cards from TWO sources:
+1. **Latest Database Search Results** - Cards from the user's most recent query
+2. **Card Discovery Memory** - All cards discovered in previous searches this session
 
-    def _build_conversation_context(self, conversation_state: ConversationState, available_cards: Optional[List[Dict[str, Any]]] = None) -> str:
+This memory system allows you to build complete 60-card decks by accumulating cards across multiple queries. Always reference both sources when making recommendations."""
+
+    def _build_conversation_context(self, conversation_state: ConversationState, available_cards: Optional[List[Dict[str, Any]]] = None, memory_cache: Optional[MemoryCache] = None) -> str:
         """Build conversation context from current state"""
         context_parts = []
         
@@ -86,6 +91,20 @@ When providing deck building advice, always:
 - Trainers: {trainer_count} cards  
 - Energy: {energy_count} cards
 - Remaining: {60 - total_cards} cards to add""")
+        
+        # Memory cache summary for cumulative discovery
+        if memory_cache:
+            cache_summary = memory_cache.get_cache_summary()
+            context_parts.append(f"## Card Discovery Memory:\n{cache_summary}")
+            
+            # Show synergy opportunities from cached cards
+            synergies = memory_cache.identify_synergies()
+            if synergies:
+                context_parts.append("## Discovered Synergy Opportunities:")
+                for tag, cards in list(synergies.items())[:3]:  # Show top 3 synergies
+                    context_parts.append(f"- **{tag.replace('_', ' ').title()}**: {', '.join(cards[:5])}")
+                    if len(cards) > 5:
+                        context_parts.append(f"  (+{len(cards) - 5} more cards with this synergy)")
         
         # Strategy information
         if conversation_state.deck_strategy:
@@ -110,9 +129,9 @@ When providing deck building advice, always:
         
         # Available cards from comprehensive database search
         if available_cards:
-            context_parts.append(f"## Complete Database Search Results ({len(available_cards)} cards found):")
-            context_parts.append("**These are ALL the relevant cards from the database that match the user's request.**")
-            context_parts.append("**IMPORTANT: You can ONLY recommend cards from this list. Do not suggest any other cards.**")
+            context_parts.append(f"## Latest Database Search Results ({len(available_cards)} cards found):")
+            context_parts.append("**These are the cards from your most recent search query.**")
+            context_parts.append("**IMPORTANT: You can recommend cards from this list AND from your Card Discovery Memory above.**")
             
             # Show ALL cards found, not just first 50
             for i, card in enumerate(available_cards, 1):
@@ -145,8 +164,8 @@ When providing deck building advice, always:
                 context_parts.append(f"{i}. {name} - {description}")
                 
         else:
-            context_parts.append("## No Relevant Cards Found:")
-            context_parts.append("No cards matched your search criteria. Try a different search or broaden your request.")
+            context_parts.append("## No New Cards Found:")
+            context_parts.append("No cards matched your latest search. But you can still work with previously discovered cards from your Card Discovery Memory!")
         
         # Recent conversation history for context
         if conversation_state.conversation_history:
@@ -174,12 +193,13 @@ When providing deck building advice, always:
         user_message: str, 
         conversation_state: ConversationState,
         available_cards: Optional[List[Dict[str, Any]]] = None,
-        custom_context: Optional[str] = None
+        custom_context: Optional[str] = None,
+        memory_cache: Optional[MemoryCache] = None
     ) -> str:
         """Generate conversational response using Claude"""
         
         system_prompt = self._build_system_prompt()
-        conversation_context = self._build_conversation_context(conversation_state, available_cards)
+        conversation_context = self._build_conversation_context(conversation_state, available_cards, memory_cache)
         
         # Build the full context
         full_context = conversation_context
@@ -253,34 +273,63 @@ Consider:
         self,
         user_message: str,
         deck_state: Any,
-        query_builder: CardQueryBuilder
+        query_builder: CardQueryBuilder,
+        user_id: str = None,
+        deck_id: str = None
     ) -> Dict[str, Any]:
-        """Generate response with intelligent database querying"""
+        """Generate response with intelligent database querying and memory cache"""
+        
+        # Get or create memory cache for this user
+        cache_manager = get_memory_cache_manager()
+        memory_cache = cache_manager.get_cache(user_id or "anonymous", deck_id)
+        
+        # DEBUG: Print cache state before search
+        print(f"DEBUG: Memory cache has {len(memory_cache.discovered_cards)} cards before search")
         
         # Execute intelligent search based on user message
         search_results = await self._execute_intelligent_search(
             user_message, query_builder
         )
         
-        # DEBUG: Print search results
-        print(f"DEBUG: Search found {len(search_results)} cards")
+        # Add new search results to memory cache
         if search_results:
-            print(f"DEBUG: First card: {search_results[0].get('name', 'Unknown')}")
-            print(f"DEBUG: First 5 cards: {[card.get('name', 'Unknown') for card in search_results[:5]]}")
-        else:
-            print("DEBUG: No cards found in search!")
+            cache_manager.add_cards_to_cache(
+                user_id or "anonymous", 
+                search_results, 
+                user_message, 
+                deck_id
+            )
         
-        # Generate response with found cards
+        # Update strategy context if provided
+        if deck_state.deck_strategy:
+            cache_manager.update_strategy_context(
+                user_id or "anonymous", 
+                deck_state.deck_strategy, 
+                deck_id
+            )
+        
+        # DEBUG: Print search results
+        print(f"DEBUG: Search found {len(search_results)} new cards")
+        print(f"DEBUG: Memory cache now has {len(memory_cache.discovered_cards)} total cards")
+        if search_results:
+            print(f"DEBUG: First 5 new cards: {[card.get('name', 'Unknown') for card in search_results[:5]]}")
+        else:
+            print("DEBUG: No new cards found in search!")
+        
+        # Generate response with found cards and memory cache
         response = await self.generate_response(
             user_message,
             deck_state,
-            search_results
+            search_results,
+            memory_cache=memory_cache
         )
         
         return {
             "ai_response": response,
             "cards_found": search_results,
-            "updated_deck_state": None
+            "updated_deck_state": None,
+            "memory_cache_summary": memory_cache.get_cache_summary(),
+            "total_discovered_cards": len(memory_cache.discovered_cards)
         }
 
     async def _execute_intelligent_search(

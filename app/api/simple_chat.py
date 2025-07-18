@@ -25,6 +25,9 @@ class ChatResponse(BaseModel):
     cards_found: list
     deck_progress: Dict[str, Any]
     conversation_state: Dict[str, Any]
+    memory_cache_summary: Optional[str] = None
+    total_discovered_cards: Optional[int] = None
+    debug: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
 

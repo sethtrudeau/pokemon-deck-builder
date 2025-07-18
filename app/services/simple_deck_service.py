@@ -66,11 +66,13 @@ class SimpleDeckBuildingService:
             print(f"DEBUG: Processing message: '{message}'")
             print(f"DEBUG: User ID: {user_id}")
             
-            # Let Claude handle everything directly
+            # Let Claude handle everything directly with memory cache
             response = await self.claude_client.generate_response_with_database_access(
                 user_message=message,
                 deck_state=conversation_state,
-                query_builder=query_builder
+                query_builder=query_builder,
+                user_id=user_id,
+                deck_id=deck_id
             )
             
             # DEBUG: Print response
@@ -99,10 +101,13 @@ class SimpleDeckBuildingService:
                 "cards_found": response.get("cards_found", []),
                 "deck_progress": self._get_deck_progress(deck_state),
                 "conversation_state": self._deck_state_to_dict(deck_state),
+                "memory_cache_summary": response.get("memory_cache_summary", ""),
+                "total_discovered_cards": response.get("total_discovered_cards", 0),
                 "debug": {
                     "cards_found_count": len(response.get("cards_found", [])),
                     "first_card": response.get("cards_found", [{}])[0].get("name", "No cards") if response.get("cards_found") else "No cards",
-                    "search_detected": "spread damage" in message.lower()
+                    "search_detected": "spread damage" in message.lower(),
+                    "memory_cache_enabled": True
                 },
                 "error": None
             }
