@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Dict, List, Optional, Any
 from anthropic import AsyncAnthropic
 from decouple import config
@@ -90,11 +91,21 @@ class ClaudeClient:
 - Evolution chains: Basic → Stage 1 → Stage 2 (must include lower stages)
 - Energy types must match Pokemon attack requirements
 
-**CRITICAL CONSTRAINT**: You can recommend cards from TWO sources:
-1. **Latest Database Search Results** - Cards from the user's most recent query
-2. **Card Discovery Memory** - All cards discovered in previous searches this session
+## Database Access Capabilities:
+You have access to a comprehensive Pokemon TCG database and can search for cards at any time. You can recommend cards from THREE sources:
 
-This memory system allows you to build complete 60-card decks by accumulating cards across multiple queries. Always reference both sources when making recommendations."""
+1. **Database Search Results** - Cards from your current database query (automatically triggered when you need specific cards)
+2. **Card Discovery Memory** - All cards found in previous searches this session  
+3. **Additional Database Queries** - You can search for specific combinations like "Fire-type Pokemon with 100+ HP" or "Trainer cards that provide draw power"
+
+## When to Search the Database:
+- When you need cards with specific characteristics not in your current memory
+- When building support packages and need particular card types
+- When optimizing decks and need specific utility cards
+- When user asks for cards meeting multiple criteria
+- ALWAYS feel free to search - the database is comprehensive and current
+
+This system allows you to find exactly the cards you need for each phase of deck building."""
 
     def _build_conversation_context(self, conversation_state: ConversationState, available_cards: Optional[List[Dict[str, Any]]] = None, memory_cache: Optional[MemoryCache] = None) -> str:
         """Build conversation context from current state"""
@@ -465,25 +476,77 @@ Consider:
                     print(f"DEBUG: Error in strategic search: {e}")
                     continue
         
-        # Strategy 2: Structured search based on detected card types
+        # Strategy 2: Enhanced structured search with multi-variable support
         if not found_strategic:
             try:
-                pokemon_keywords = ["pokemon", "pokémon", "attacker", "basic", "stage", "ex", "gx", "v"]
-                trainer_keywords = ["trainer", "support", "item", "stadium", "tool", "draw", "search"]
-                energy_keywords = ["energy", "basic energy", "special energy"]
+                # Build search parameters based on user message
+                search_params = {}
                 
-                if any(keyword in user_lower for keyword in pokemon_keywords):
-                    pokemon_results = query_builder.search_cards(card_types=["Pokémon"], limit=80)
-                    all_results.extend(pokemon_results.get("data", []))
+                # Card type detection
+                if any(keyword in user_lower for keyword in ["pokemon", "pokémon", "attacker", "basic", "stage", "ex", "gx", "v"]):
+                    search_params["card_types"] = ["Pokémon"]
+                    search_params["limit"] = 80
+                elif any(keyword in user_lower for keyword in ["trainer", "support", "item", "stadium", "tool"]):
+                    search_params["card_types"] = ["Trainer"]  
+                    search_params["limit"] = 60
+                elif any(keyword in user_lower for keyword in ["energy", "basic energy", "special energy"]):
+                    search_params["card_types"] = ["Energy"]
+                    search_params["limit"] = 20
+                else:
+                    # Mixed search if no specific type detected
+                    search_params["limit"] = 100
                 
-                if any(keyword in user_lower for keyword in trainer_keywords):
-                    trainer_results = query_builder.search_cards(card_types=["Trainer"], limit=60)
-                    all_results.extend(trainer_results.get("data", []))
+                # Pokemon type detection
+                type_patterns = {
+                    r'\bfire\b': "Fire", r'\bwater\b': "Water", r'\bgrass\b': "Grass",
+                    r'\belectric\b': "Lightning", r'\blightning\b': "Lightning",
+                    r'\bpsychic\b': "Psychic", r'\bfighting\b': "Fighting",
+                    r'\bdarkness\b': "Darkness", r'\bmetal\b': "Metal",
+                    r'\bfairy\b': "Fairy", r'\bdragon\b': "Dragon", r'\bcolorless\b': "Colorless"
+                }
                 
-                if any(keyword in user_lower for keyword in energy_keywords):
-                    energy_results = query_builder.search_cards(card_types=["Energy"], limit=20)
-                    all_results.extend(energy_results.get("data", []))
-            except:
+                for pattern, ptype in type_patterns.items():
+                    if re.search(pattern, user_lower):
+                        search_params["pokemon_types"] = [ptype]
+                        break
+                
+                # HP range detection
+                hp_match = re.search(r'(\d+)\s*(?:\+|or more|above)\s*hp', user_lower)
+                if hp_match:
+                    search_params["hp_min"] = int(hp_match.group(1))
+                
+                hp_range = re.search(r'(\d+)\s*(?:-|to)\s*(\d+)\s*hp', user_lower)
+                if hp_range:
+                    search_params["hp_min"] = int(hp_range.group(1))
+                    search_params["hp_max"] = int(hp_range.group(2))
+                
+                # Subtype detection
+                subtype_patterns = {
+                    r'\bbasic\b': ["Basic"],
+                    r'\bstage 1\b': ["Stage 1"],
+                    r'\bstage 2\b': ["Stage 2"],
+                    r'\bex\b': ["Pokémon ex"],
+                    r'\bgx\b': ["Pokémon GX"],
+                    r'\bv(?:\s|$)\b': ["Pokémon V"],
+                    r'\bvmax\b': ["Pokémon VMAX"],
+                    r'\bsupporter\b': ["Supporter"],
+                    r'\bitem\b': ["Item"],
+                    r'\bstadium\b': ["Stadium"],
+                    r'\btool\b': ["Pokémon Tool"]
+                }
+                
+                for pattern, subtypes in subtype_patterns.items():
+                    if re.search(pattern, user_lower):
+                        search_params["subtypes"] = subtypes
+                        break
+                
+                # Execute search with combined parameters
+                print(f"DEBUG: Executing structured search with params: {search_params}")
+                results = query_builder.search_cards(**search_params)
+                all_results.extend(results.get("data", []))
+                
+            except Exception as e:
+                print(f"DEBUG: Error in structured search: {e}")
                 pass
         
         # Strategy 3: Broad search if no specific results
@@ -513,39 +576,48 @@ Consider:
         if len(memory_cache.discovered_cards) == 0:
             return True
         
-        # Search for specific card names
-        if any(keyword in message_lower for keyword in ['show me', 'find', 'search for', 'get', 'need']):
-            # Check if we're looking for a specific card type we don't have
-            progress = memory_cache.get_deck_progress()
-            cards_by_type = progress['cards_by_type']
-            
-            # Need trainer cards and don't have many
-            if ('trainer' in message_lower or 'support' in message_lower or 'item' in message_lower) and cards_by_type.get('Trainer', 0) < 10:
-                return True
-            
-            # Need energy cards and don't have many
-            if 'energy' in message_lower and cards_by_type.get('Energy', 0) < 5:
-                return True
-            
-            # Need Pokemon cards and don't have many
-            if ('pokemon' in message_lower or 'attacker' in message_lower) and cards_by_type.get('Pokémon', 0) < 20:
-                return True
-            
-            # New strategic search (haven't searched for this strategy before)
-            strategic_keywords = ['spread damage', 'draw power', 'energy acceleration', 'disruption', 'stall']
-            for strategy in strategic_keywords:
-                if strategy in message_lower:
-                    # Check if we've searched for this strategy before
-                    previous_searches = memory_cache.search_history
-                    if not any(strategy in prev_search.lower() for prev_search in previous_searches):
-                        return True
+        # Look for explicit search requests
+        search_indicators = [
+            'show me', 'find', 'search for', 'get', 'need', 'looking for',
+            'what pokemon', 'what trainer', 'what energy', 'cards that',
+            'with', 'having', 'that have', 'that can'
+        ]
         
-        # Questions about existing cards - don't search
-        if any(keyword in message_lower for keyword in ['what', 'how', 'can you', 'build', 'recommend', 'suggest']):
+        if any(indicator in message_lower for indicator in search_indicators):
+            return True
+            
+        # Look for specific characteristics that would require targeted searches
+        specific_requests = [
+            'hp', 'damage', 'energy cost', 'ability', 'attack',
+            'type', 'stage', 'basic', 'evolution', 'ex', 'gx', 'v',
+            'trainer', 'support', 'item', 'stadium', 'tool'
+        ]
+        
+        if any(request in message_lower for request in specific_requests):
+            return True
+        
+        # Look for new strategic concepts not previously searched
+        current_searches = ' '.join(memory_cache.search_history).lower()
+        strategic_terms = [
+            'spread damage', 'draw power', 'energy acceleration', 'disruption',
+            'stall', 'mill', 'control', 'aggro', 'combo', 'toolbox'
+        ]
+        
+        for term in strategic_terms:
+            if term in message_lower and term not in current_searches:
+                return True
+        
+        # Only skip search for pure analysis questions about existing cards
+        pure_analysis = [
+            'how does this work', 'what do you think', 'is this good',
+            'why would', 'explain', 'tell me about'
+        ]
+        
+        if any(phrase in message_lower for phrase in pure_analysis):
             return False
-        
-        # Default to not searching if we have a good cache
-        return len(memory_cache.discovered_cards) < 60
+            
+        # Default to searching - better to have more options than fewer
+        return True
 
     def _card_matches_strategy(self, card: Dict[str, Any], strategy: str, keywords: List[str]) -> bool:
         """Check if a card matches a strategic concept"""

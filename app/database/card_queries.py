@@ -35,10 +35,9 @@ class CardQueryBuilder:
         if card_types:
             query = query.in_("card_type", card_types)
         
-        # Temporarily disable pokemon_types filtering to avoid JSONB issues
-        # The cards will be filtered by the AI based on context
-        if pokemon_types:
-            pass  # Skip type filtering for now
+        # Pokemon types filtering - temporarily skip database filtering
+        # Filter types in Python after retrieval due to JSONB complexity
+        store_pokemon_types = pokemon_types  # Store for Python filtering
         
         if hp_min is not None:
             query = query.gte("hp", hp_min)
@@ -58,9 +57,18 @@ class CardQueryBuilder:
         # Execute query
         result = query.execute()
         
+        # Post-process for Pokemon types filtering if needed
+        filtered_data = result.data
+        if pokemon_types:
+            filtered_data = []
+            for card in result.data:
+                card_types_list = card.get("types", [])
+                if any(ptype in card_types_list for ptype in pokemon_types):
+                    filtered_data.append(card)
+        
         return {
-            "data": result.data,
-            "count": len(result.data),
+            "data": filtered_data,
+            "count": len(filtered_data),
             "offset": offset,
             "limit": limit
         }
