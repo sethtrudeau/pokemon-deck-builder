@@ -19,49 +19,69 @@ class ClaudeClient:
 
     def _build_system_prompt(self) -> str:
         """Build the system prompt for Pokemon deck building"""
-        return """You are a master Pokemon TCG deck building strategist with decades of competitive experience. When a user asks for cards with specific capabilities, you analyze ALL available options comprehensively before making strategic recommendations.
+        return """You are a master Pokemon TCG deck building strategist who guides users through a deliberate, multi-step building process. You NEVER attempt to build a complete 60-card deck from the first input. Instead, you follow a structured progression that ensures optimal deck construction.
 
-## Your Approach:
-1. **Synergy Discovery**: Look for powerful interactions and combinations between cards first
-2. **Strategic Foundations**: Build deck concepts around these synergies
-3. **Comprehensive Analysis**: Review ALL cards for additional synergy potential
-4. **Deck Architecture**: Design complete strategies around key synergies
-5. **Competitive Refinement**: Optimize synergy-based decks for tournament play
+## Multi-Step Building Process (ALWAYS FOLLOW):
 
-## Response Structure:
-When providing deck building advice, always:
+### **Phase 1: Core Engine Discovery** (First Priority)
+**NEVER skip this phase - it's the foundation of every great deck**
+- Identify 2-3 Pokemon that form the deck's primary win condition
+- Focus on the most powerful synergistic interactions between these core cards
+- Explain how these Pokemon create a cohesive strategy
+- Suggest specific card counts for the core engine (typically 6-12 cards total)
+- Ask the user if they want to explore this core engine further or see alternatives
 
-### **Synergy Identification:**
-- Look for powerful interactions between cards in the search results
-- Identify unique combinations that create strategic advantages
-- Find overlooked synergies that others might miss
-- Prioritize combinations that multiply card effectiveness
+### **Phase 2: Critical Support Infrastructure** (Second Priority)
+**Only proceed here AFTER establishing the core engine**
+- Add essential support Pokemon that enable or enhance the core strategy
+- Include key trainer cards for consistency (draw, search, utility)
+- Recommend energy requirements to power the core engine
+- Suggest 15-25 additional cards that directly support the core strategy
+- Explain how each addition strengthens the core engine's effectiveness
 
-### **Synergy-Based Deck Concepts:**
-- Build deck archetypes around the strongest synergies discovered
-- Explain how each synergy creates a win condition or strategic advantage
-- Show how synergistic cards work together to form a coherent strategy
-- Present multiple synergy-based approaches using the available cards
+### **Phase 3: Consistency & Optimization** (Final Priority)
+**Only proceed here AFTER core engine + critical support are established**
+- Fine-tune card counts for optimal consistency
+- Add tech cards for specific matchups or meta considerations
+- Complete the remaining slots to reach exactly 60 cards
+- Optimize the energy base and ensure proper ratios
+- Provide the final, complete deck list with explanations
 
-### **Complete Deck Architecture:**
-- Design full 60-card strategies around key synergies
-- Recommend supporting cards needed to enable synergies
-- Explain energy requirements and consistency needs for synergy execution
-- Suggest specific counts that maximize synergistic potential
+## Response Guidelines by Phase:
 
-### **Synergy Optimization:**
-- Identify ways to make synergies more consistent and powerful
-- Suggest tech cards that enhance or protect key synergies
-- Discuss how to adapt synergies against different meta matchups
-- Recommend timing and sequencing for complex synergistic plays
+### **Phase 1 Responses (Initial Queries):**
+- Present 2-4 core engine options with clear synergy explanations
+- Keep recommendations focused (8-15 cards maximum)
+- End with: "Which core engine interests you most, or would you like to see other options?"
+- NEVER proceed to Phase 2 without user confirmation
+- If user selects a core engine, acknowledge it and move to Phase 2
 
-## Key Principles:
-- **Synergy-First**: Start with card interactions, not individual card analysis
-- **Pattern Recognition**: Identify connections others might miss across the entire card pool
-- **Strategic Innovation**: Create unique deck concepts based on discovered synergies
-- **Educational**: Explain how synergies work and why they're powerful
-- **Practical**: Provide actionable deck lists built around synergistic foundations
-- **Comprehensive**: Analyze ALL cards for synergy potential, not just obvious choices
+### **Phase 2 Responses (User Selected Core Engine):**
+- Build on the user's chosen core engine from Phase 1
+- Add 15-25 supporting cards with clear roles defined
+- Include essential trainer cards, support Pokemon, and basic energy needs
+- Explain how each addition serves the core strategy
+- End with: "How does this support package look? Ready to optimize for consistency?"
+- NEVER jump to a complete 60-card list until Phase 3
+
+### **Phase 3 Responses (User Ready for Final Optimization):**
+- Present the complete, optimized 60-card deck list
+- Provide detailed explanations for final card choices and counts
+- Include mulligan strategy and key interactions
+- Offer alternative tech options for different meta considerations
+- Only proceed here when user explicitly confirms they're ready for the complete deck
+
+## Phase Detection Guidelines:
+- **Phase 1**: User asks about deck ideas, strategies, or hasn't chosen a core yet
+- **Phase 2**: User has selected/confirmed a core engine and wants to build on it
+- **Phase 3**: User explicitly asks for complete deck, final optimization, or says "ready to optimize"
+
+## Core Principles:
+- **Progressive Building**: Each phase builds deliberately on the previous one
+- **User Collaboration**: Always confirm direction before advancing phases
+- **Strategic Focus**: Maintain clear connection to the core engine throughout
+- **Educational**: Explain the reasoning behind each phase's additions
+- **Patience**: Never rush to complete lists - the process creates better decks
 
 ## Pokemon TCG Rules (Always Enforced):
 - Standard deck must contain exactly 60 cards
@@ -92,10 +112,48 @@ This memory system allows you to build complete 60-card decks by accumulating ca
 - Energy: {energy_count} cards
 - Remaining: {60 - total_cards} cards to add""")
         
-        # Memory cache summary for cumulative discovery
-        if memory_cache:
+        # Memory cache with full card details for cumulative discovery
+        if memory_cache and len(memory_cache.discovered_cards) > 0:
             cache_summary = memory_cache.get_cache_summary()
             context_parts.append(f"## Card Discovery Memory:\n{cache_summary}")
+            
+            # Show ALL previously discovered cards with full details
+            context_parts.append(f"## All Previously Discovered Cards ({len(memory_cache.discovered_cards)} total):")
+            context_parts.append("**These are ALL cards found in previous searches. You can recommend any of these cards.**")
+            
+            # Group cards by search context for better organization
+            cards_by_search = {}
+            for card_id, discovery in memory_cache.discovered_cards.items():
+                search_context = discovery.search_context
+                if search_context not in cards_by_search:
+                    cards_by_search[search_context] = []
+                cards_by_search[search_context].append(discovery)
+            
+            # Show cards organized by search context
+            for search_context, discoveries in cards_by_search.items():
+                context_parts.append(f"### From search: \"{search_context}\" ({len(discoveries)} cards)")
+                for i, discovery in enumerate(discoveries[:20], 1):  # Show first 20 per search
+                    card = discovery.card_data
+                    name = card.get("name", "Unknown")
+                    card_type = card.get("card_type", "Unknown")
+                    subtype = card.get("subtype", "")
+                    hp = card.get("hp", "")
+                    types = card.get("types", [])
+                    
+                    # Build description
+                    desc_parts = [card_type]
+                    if subtype:
+                        desc_parts.append(subtype)
+                    if hp:
+                        desc_parts.append(f"{hp} HP")
+                    if types:
+                        desc_parts.append(f"Types: {', '.join(types)}")
+                    
+                    description = " | ".join(desc_parts)
+                    context_parts.append(f"  {i}. {name} - {description}")
+                
+                if len(discoveries) > 20:
+                    context_parts.append(f"  ... and {len(discoveries) - 20} more cards")
             
             # Show synergy opportunities from cached cards
             synergies = memory_cache.identify_synergies()
@@ -286,19 +344,26 @@ Consider:
         # DEBUG: Print cache state before search
         print(f"DEBUG: Memory cache has {len(memory_cache.discovered_cards)} cards before search")
         
-        # Execute intelligent search based on user message
-        search_results = await self._execute_intelligent_search(
-            user_message, query_builder
-        )
+        # Decide whether to do a new search or use existing cache
+        should_search = self._should_perform_new_search(user_message, memory_cache)
         
-        # Add new search results to memory cache
-        if search_results:
-            cache_manager.add_cards_to_cache(
-                user_id or "anonymous", 
-                search_results, 
-                user_message, 
-                deck_id
+        search_results = []
+        if should_search:
+            # Execute intelligent search based on user message
+            search_results = await self._execute_intelligent_search(
+                user_message, query_builder
             )
+            
+            # Add new search results to memory cache
+            if search_results:
+                cache_manager.add_cards_to_cache(
+                    user_id or "anonymous", 
+                    search_results, 
+                    user_message, 
+                    deck_id
+                )
+        else:
+            print("DEBUG: Skipping search - using existing memory cache")
         
         # Update strategy context if provided
         if deck_state.deck_strategy:
@@ -317,6 +382,7 @@ Consider:
             print("DEBUG: No new cards found in search!")
         
         # Generate response with found cards and memory cache
+        # Note: Pass search_results as the "latest" search, but Claude will have access to full memory cache
         response = await self.generate_response(
             user_message,
             deck_state,
@@ -326,7 +392,7 @@ Consider:
         
         return {
             "ai_response": response,
-            "cards_found": search_results,
+            "cards_found": search_results,  # Latest search results
             "updated_deck_state": None,
             "memory_cache_summary": memory_cache.get_cache_summary(),
             "total_discovered_cards": len(memory_cache.discovered_cards)
@@ -438,6 +504,48 @@ Consider:
                 unique_results.append(card)
         
         return unique_results[:80]  # Return top 80 unique cards
+
+    def _should_perform_new_search(self, user_message: str, memory_cache: MemoryCache) -> bool:
+        """Determine if we should perform a new database search or use existing cache"""
+        message_lower = user_message.lower()
+        
+        # Always search if cache is empty
+        if len(memory_cache.discovered_cards) == 0:
+            return True
+        
+        # Search for specific card names
+        if any(keyword in message_lower for keyword in ['show me', 'find', 'search for', 'get', 'need']):
+            # Check if we're looking for a specific card type we don't have
+            progress = memory_cache.get_deck_progress()
+            cards_by_type = progress['cards_by_type']
+            
+            # Need trainer cards and don't have many
+            if ('trainer' in message_lower or 'support' in message_lower or 'item' in message_lower) and cards_by_type.get('Trainer', 0) < 10:
+                return True
+            
+            # Need energy cards and don't have many
+            if 'energy' in message_lower and cards_by_type.get('Energy', 0) < 5:
+                return True
+            
+            # Need Pokemon cards and don't have many
+            if ('pokemon' in message_lower or 'attacker' in message_lower) and cards_by_type.get('Pokémon', 0) < 20:
+                return True
+            
+            # New strategic search (haven't searched for this strategy before)
+            strategic_keywords = ['spread damage', 'draw power', 'energy acceleration', 'disruption', 'stall']
+            for strategy in strategic_keywords:
+                if strategy in message_lower:
+                    # Check if we've searched for this strategy before
+                    previous_searches = memory_cache.search_history
+                    if not any(strategy in prev_search.lower() for prev_search in previous_searches):
+                        return True
+        
+        # Questions about existing cards - don't search
+        if any(keyword in message_lower for keyword in ['what', 'how', 'can you', 'build', 'recommend', 'suggest']):
+            return False
+        
+        # Default to not searching if we have a good cache
+        return len(memory_cache.discovered_cards) < 60
 
     def _card_matches_strategy(self, card: Dict[str, Any], strategy: str, keywords: List[str]) -> bool:
         """Check if a card matches a strategic concept"""
